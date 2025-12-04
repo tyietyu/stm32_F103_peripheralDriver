@@ -1,8 +1,14 @@
 #include "esp8266.h"
 #include "core_json.h"
 #include "usart.h"
+#include "otadriver.h"
 
 extern UART_HandleTypeDef huart2;
+extern DMA_HandleTypeDef hdma_usart2_rx;
+
+static uint8_t ESP8266_restore(void);
+static uint8_t ESP8266_sw_reset(void);
+
 // 初始化配置
 esp8266_config_t esp8266_config = {
     .wifi = {
@@ -45,9 +51,10 @@ uart_init_t uart_init = {
 
 esp8266_init_t esp8266_init = {
     .init = ESP8266_init,
+    .esp8266_sw_reset = ESP8266_sw_reset,
+    .esp8266_restore = ESP8266_restore,
     .connect_wifi = ESP8266_connect_wifi,
     .login_to_cloud = ESP8266_connect_to_cloud,
-
 };
 
 void ESP8266_uart_rx_clear(uint16_t len)
@@ -71,15 +78,23 @@ void hal_uart_receive(uint8_t *data, size_t length)
     HAL_UART_Receive(&huart2, data, length, 1000);
 }
 
-void hal_uart2_receiver_handle(void)
+void hal_uart2_receiver_handle(UART_HandleTypeDef *huart)
 {
-    uint8_t receive_data = 0;
-    hal_uart_receive(&receive_data, sizeof(receive_data));
-    uart_init.esp8266_buffer.receive_buff[uart_init.esp8266_buffer.receive_count++] = receive_data;
-    if(receive_data == '\0')
+    if(__HAL_UART_GET_FLAG(huart, UART_FLAG_IDLE) != RESET)
     {
-        uart_init.esp8266_buffer.receive_start = 1;
-        uart_init.esp8266_buffer.receive_count = 0;
+        __HAL_UART_CLEAR_FLAG(huart, UART_FLAG_IDLE);
+        HAL_UART_DMAStop(huart);
+        uint16_t len = ESP8266_RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart->hdmarx);
+        if(len > 0)
+        {
+            uart_init.esp8266_buffer.receive_count = len;
+            uart_init.esp8266_buffer.receive_start = 1;
+            if(len < ESP8266_RX_BUF_SIZE) 
+            {
+                uart_init.esp8266_buffer.receive_buff[len] = '\0';
+            }
+        }
+        HAL_UART_Receive_DMA(huart, uart_init.esp8266_buffer.receive_buff, ESP8266_RX_BUF_SIZE);
     }
 }
 
@@ -100,6 +115,7 @@ uint8_t ESP8266_send_at_cmd(unsigned char *cmd, unsigned char len, const char *a
         ESP8266_uart_rx_clear(uart_init.esp8266_buffer.receive_count);
         return ESP8266_ERROR;
     }
+    return ESP8266_ERROR;
 }
 
 static uint8_t ESP8266_sw_reset(void)
@@ -150,7 +166,7 @@ static uint8_t ESP8266_ate_config(uint8_t cfg)
     return ESP8266_send_at_cmd((unsigned char *)cmd, strlen(cmd), "OK");
 }
 
-static uint8_t ESP8266_set_unvarnished_mode(uint8_t enter)
+uint8_t ESP8266_set_unvarnished_mode(uint8_t enter)
 {
     uint8_t ret;
     if (enter)
@@ -267,28 +283,59 @@ uint8_t ESP8266_connect_to_cloud(const char *mqtt_name, const char *mqtt_passwor
 
 uint8_t ESP8266_init(uint8_t esp8266_mode, uint8_t esp8266_cfg)
 {
-    __HAL_UART_ENABLE_IT(&huart2, UART_IT_RXNE);
+    __HAL_UART_ENABLE_IT(&huart2, UART_IT_IDLE);
+    HAL_UART_Receive_DMA(&huart2, uart_init.esp8266_buffer.receive_buff, ESP8266_RX_BUF_SIZE);
+
     const char *at_cmd = "AT\r\n";
     const char *expected_ack = "OK";
-    const uint8_t max_attempts = 10;
+    uint8_t max_attempts = 10;
+    uint8_t retry = 0;
+    uint8_t at_ok = 0;
 
     for (uint8_t i = 0; i < max_attempts; i++)
     {
         if (ESP8266_send_at_cmd((uint8_t *)at_cmd, strlen(at_cmd), expected_ack) == ESP8266_EOK)
         {
-            while (ESP8266_set_mode(esp8266_mode))
-                ;
-            while (ESP8266_ate_config(esp8266_cfg))
-                ;
-            while (ESP8266_connect_wifi(esp8266_config.wifi.ssid, esp8266_config.wifi.password))
-                ;
-            while (ESP8266_connect_to_cloud(esp8266_config.mqtt.username, esp8266_config.mqtt.password, esp8266_config.mqtt.client_id, esp8266_config.mqtt.broker_address))
-                ;
-
-            return ESP8266_EOK; // 成功响应
+            at_ok = 1;
+            break;
         }
+        HAL_Delay(500);
     }
-    return ESP8266_ERROR; // 超过最大尝试次数
+    if(!at_ok)return ESP8266_ERROR;
+
+    retry = 0;
+    while (ESP8266_set_mode(esp8266_mode))
+    {
+        if (++retry > 5) return ESP8266_ERROR;
+        HAL_Delay(500);
+    }
+
+    retry = 0;
+    while (ESP8266_ate_config(esp8266_cfg))
+    {
+        if (++retry > 5) return ESP8266_ERROR;
+        HAL_Delay(500);
+    }
+
+    retry = 0;
+    while (ESP8266_connect_wifi(esp8266_config.wifi.ssid, esp8266_config.wifi.password))
+    {
+        printf("WiFi Connect Failed, Retrying... %d/5\r\n", retry+1);
+        if (++retry > 5) return ESP8266_ERROR;
+        HAL_Delay(500);
+    }
+
+    retry = 0;
+    while (ESP8266_connect_to_cloud(esp8266_config.mqtt.username, 
+                                    esp8266_config.mqtt.password, 
+                                    esp8266_config.mqtt.client_id, 
+                                    esp8266_config.mqtt.broker_address))
+    {
+        printf("MQTT Connect Failed, Retrying... %d/5\r\n", retry+1);
+        if (++retry > 5) return ESP8266_ERROR;
+        HAL_Delay(500);
+    }
+    return ESP8266_EOK;
 }
 
 uint8_t ESP8266_send_msg(const char *topic, const char *msg_format, ...)
@@ -378,35 +425,90 @@ static uint8_t parse_json_msg(uint8_t *json_msg, uint8_t json_len)
 uint8_t ESP8266_receive_msg(const char *topic, uint8_t *msg_data, uint16_t msg_len)
 {
     uint8_t retval = 0;
+    char *rx_buff = (char *)uart_init.esp8266_buffer.receive_buff;
+    MQTT_MsgType_t msg_type = MQTT_MSG_TYPE_NORMAL; // 默认为普通消息
+
     if (uart_init.esp8266_buffer.receive_start == 1)
     {
-        do
-        {
-            uart_init.esp8266_buffer.receive_finish++;
-        } while (uart_init.esp8266_buffer.receive_finish < 5);
+        uart_init.esp8266_buffer.receive_start = 0;
 
-        if (strstr((const char *)uart_init.esp8266_buffer.receive_buff, "+MQTTSUBRECV:"))
+        char *ptr = strstr(rx_buff, "+MQTTSUBRECV:");
+        if (ptr)
         {
-            sscanf((const char *)uart_init.esp8266_buffer.receive_buff, "+MQTTSUBRECV:0,\"%s\",%d,%s", topic, msg_data, msg_len);
-            // printf("len:%d,msg:%s\r\n", msg_len, msg_body);
-            if (strlen((const char *)msg_data) == msg_len)
+            // A. 解析 Topic (提取双引号之间的内容)
+            char *topic_start = strchr(ptr, '"');
+            if (topic_start == NULL)
+			{
+				ESP8266_uart_rx_clear(uart_init.esp8266_buffer.receive_count);
+			}
+            topic_start++; // 跳过左引号
+
+            char *topic_end = strchr(topic_start, '"');
+            if (topic_end == NULL)
+			{
+				ESP8266_uart_rx_clear(uart_init.esp8266_buffer.receive_count);
+			}
+
+            // 提取 Topic 到本地缓冲区用于判断
+            char recv_topic[128] = {0};
+            uint8_t topic_len = topic_end - topic_start;
+            if (topic_len >= sizeof(recv_topic)) topic_len = sizeof(recv_topic) - 1;
+            memcpy(recv_topic, topic_start, topic_len);
+
+            // B. 解析数据长度
+            char *len_start = topic_end + 2; // 跳过 引号和逗号 ",
+            int payload_len = atoi(len_start);
+
+            // C. 定位 Payload 数据起始位置 (找到长度后面的逗号)
+            char *data_start = strchr(len_start, ',');
+            if (data_start == NULL)
+			{
+				ESP8266_uart_rx_clear(uart_init.esp8266_buffer.receive_count);
+			}
+            data_start++; // 跳过逗号，指向真实数据
+
+            // === 3. 确定消息类型 ===
+            if (strstr(recv_topic, "thing/file/download_reply")) 
             {
-                retval = parse_json_msg(msg_data, msg_len);
+                msg_type = MQTT_MSG_TYPE_OTA_NOTIFY;
             }
-            else
+            else if (strstr(recv_topic, "ota/device/upgrade")) 
             {
-                retval = 1;
+                msg_type = MQTT_MSG_TYPE_OTA_NOTIFY;
+            }
+            else 
+            {
+                msg_type = MQTT_MSG_TYPE_NORMAL;
+            }
+
+            switch (msg_type)
+            {
+                case MQTT_MSG_TYPE_OTA_NOTIFY:
+                    OTA_Process_MQTT_Msg(recv_topic, (uint8_t *)data_start, payload_len);
+                    retval = 0;
+                    break;
+
+                case MQTT_MSG_TYPE_NORMAL:
+                    if (payload_len > msg_len) payload_len = msg_len;
+                    memcpy(msg_data, data_start, payload_len);
+                    msg_data[payload_len] = '\0';
+                    retval = parse_json_msg(msg_data, payload_len);
+                    break;
+                default:
+                    break;
             }
         }
         else
         {
-            retval = 1;
+            retval = 1; // 未找到 MQTT 报头
         }
     }
     else
     {
-        retval = 1;
+        retval = 1; // 未接收到数据
     }
+
     ESP8266_uart_rx_clear(uart_init.esp8266_buffer.receive_count);
     return retval;
 }
+

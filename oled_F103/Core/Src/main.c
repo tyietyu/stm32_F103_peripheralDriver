@@ -30,6 +30,7 @@
 #include "WS2812B.h"
 #include "esp8266.h"
 #include "ee.h"
+#include "otadriver.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -87,9 +88,8 @@ EE_HandleTypeDef handle_status;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void OLED_demo(void);
+uint8_t app_payload_buffer[256];
 void ESP8266_demo(void);
-void espTopic_pub_sub_demo(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -199,9 +199,9 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  //OLED_Init();
-  // ESP8266_demo();
-  // time2_start();
+  OLED_Init();
+  ESP8266_demo();
+  time2_start();
   // while (MPU6050_Init(&hi2c2) == 1) {};
   flash_test();
   /* USER CODE END 2 */
@@ -213,8 +213,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    
-    HAL_Delay(100);
+    ESP8266_receive_msg(NULL, app_payload_buffer, 256);
+    OTA_Loop();
   }
 
   /* USER CODE END 3 */
@@ -261,8 +261,11 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 void ESP8266_demo(void)
 {
-  ESP8266_init(1,1);
-
+  if (ESP8266_init(1, 1) == ESP8266_EOK) 
+  {
+    printf("MQTT Connected!\r\n");
+    OTA_Init(); 
+  }
 }
 
 /* USER CODE END 4 */

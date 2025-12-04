@@ -665,6 +665,16 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\ee.c</FilePath>
             </File>
+            <File>
+              <FileName>md5.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\md5.c</FilePath>
+            </File>
+            <File>
+              <FileName>otadriver.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\otadriver.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

@@ -17,6 +17,12 @@ typedef enum
     ESP8266_EINVAL,
 } esp8266_state_t;
 
+/* MQTT 消息类型枚举 */
+typedef enum {
+    MQTT_MSG_TYPE_NORMAL = 0,   // 普通 JSON 业务消息
+    MQTT_MSG_TYPE_OTA_NOTIFY,   // OTA 升级通知
+} MQTT_MsgType_t;
+
 // Wi-Fi 连接信息结构体
 typedef struct {
     const char *ssid;             // Wi-Fi 名称
@@ -67,14 +73,14 @@ typedef struct {
 } esp8266_config_t;
 extern esp8266_config_t esp8266_config;
 
+#define ESP8266_RX_BUF_SIZE 1024
 #pragma pack(push, 4)
 typedef struct
 {
-    unsigned char receive_buff[512];
-    unsigned char send_buff[512];
-    uint8_t receive_start;
-    uint16_t receive_count;
-    uint16_t receive_finish;
+    unsigned char receive_buff[ESP8266_RX_BUF_SIZE];
+    unsigned char send_buff[ESP8266_RX_BUF_SIZE];
+    volatile uint8_t receive_start;  
+    volatile uint16_t receive_count;
 } esp8266_buffer_t;
 #pragma pack(pop)
 typedef struct
@@ -100,7 +106,7 @@ typedef struct
 } uart_init_t;
 extern uart_init_t uart_init; 
 
-void hal_uart2_receiver_handle(void);
+void hal_uart2_receiver_handle(UART_HandleTypeDef *huart);
 void hal_uart_send(uint8_t *data, size_t length);
 void hal_uart_receive(uint8_t *data, size_t length);
 
@@ -109,7 +115,8 @@ uint8_t ESP8266_connect_to_cloud(const char *mqtt_name, const char *mqtt_passwor
 uint8_t ESP8266_init(uint8_t esp8266_mode,uint8_t esp8266_cfg);
 uint8_t ESP8266_send_msg(const char *topic, const char *msg_format, ...);
 uint8_t ESP8266_receive_msg(const char *topic, uint8_t *msg_data, uint16_t msg_len);
-
+uint8_t ESP8266_send_at_cmd(unsigned char *cmd, unsigned char len, const char *ack);
+uint8_t ESP8266_set_unvarnished_mode(uint8_t enter);
 
 #endif
 

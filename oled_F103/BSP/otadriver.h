@@ -2,52 +2,90 @@
 #define __OTADRIVER_H
 
 #include "main.h"
+#include <stdint.h>
 
-#define  CONNECT_OK         0x00000001        //置位表明CONNECT报文成功
-#define  OTA_EVENT          0x00000002        //置位表明OTA事件发生  
-#define  OTA_SET_FLAG        0xAABB1122        //OTA_flag对勾状态对应的数值，如果OTA_flag等于该值，说明需要OTA更新A区
+/* ================= 用户配置区 ================= */
+/* 固件存储起始地址 (必须对齐扇区，且不覆盖 Bootloader 和当前 APP) */
+#define OTA_STORAGE_START_ADDR  0x08008000  //32K
+#define OTA_FLAG_ADDR  0x0800FC00
+/* 单次请求的分块大小  */
+#define OTA_BLOCK_SIZE          512        
+/* 接收超时时间 (毫秒) */
+#define OTA_RX_TIMEOUT          5000        
+/* 最大重试次数 */
+#define OTA_MAX_RETRY           5           
 
-#define OTA_PACK_ADDERS   0x08002000        //OTA固件起始地址
+#define OTA_ERR_UPGRADE_FAIL    -1
+#define OTA_ERR_DOWNLOAD_FAIL   -2
+#define OTA_ERR_VERIFY_FAIL     -3
+#define OTA_ERR_BURN_FAIL       -4
 
-#pragma pack(push, 4)
-typedef struct{
-	uint8_t   Pack_buff[512];     //报文数据缓冲区
-	uint16_t  MessageID;          //报文标识符变量
-	uint16_t  Fixed_len;          //报文固定报头长度
-	uint16_t  Variable_len;       //报文可变报头长度
-	uint16_t  Payload_len;        //报文负载长度
-	uint16_t  Remaining_len;      //报文剩余长度
-	uint8_t   CMD_buff[512];      //提取的数据缓冲区
-	int size;                     //OTA下载固件大小
-	int streamId;                 //OTA下载固件ID编号
-	int counter;                  //OTA下载总共下载次数
-	int num;                      //OTA下载当前次数
-	int downlen;                  //OTA下载当前次数下载量
-	uint8_t  OTA_tempver[32];     //OTA下载临时版本号缓冲区
-}MQTT_CB;
+/* ================= 状态机定义 ================= */
+typedef enum {
+    OTA_STATE_IDLE = 0,        // 空闲状态
+    OTA_STATE_INIT,            // 初始化中
+    OTA_STATE_NEGOTIATING,     // 协商中 (收到升级通知，准备请求)
+    OTA_STATE_DOWNLOADING,     // 下载中 (循环请求数据块)
+    OTA_STATE_FINISHING,       // 下载完成 (校验、写入标志位)
+    OTA_STATE_ERROR,           // 错误状态
+    OTA_STATE_REBOOTING        // 准备重启
+} OTA_State_t;
 
-typedef struct{          
-	uint32_t OTA_flag;                        //标志性的变量，等于OTA_SET_FLAG定义的值时，表明需要OTA更新A区
-	uint32_t Firelen[11];                     //W25Q64中不同块中程序固件的长度，0号成员固定对应W25Q64中编码0的块，用于OTA
-	uint8_t  OTA_ver[32];
-}OTA_InfoCB;  
-#pragma pack(pop)
+/* OTA 运行时上下文结构体 */
+typedef struct {
+    OTA_State_t state;           // 当前状态
 
-extern OTA_InfoCB  OTA_Info;      //外部变量声明
-extern MQTT_CB  Aliyun_mqtt;      //外部变量声明                            
+    /* 固件信息 */
+    uint32_t total_size;         // 固件总大小 (Bytes)
+    uint32_t stream_id;          // 阿里云下发的升级流 ID
+    uint32_t current_offset;     // 当前已写入 Flash 的偏移量
+    char     target_version[33]; // 目标版本号
+    char     expected_sign[65];  // 存储云端下发的签名 (Hex字符串)
+    char     sign_method[16];	 // 签名方法 (MD5 或 SHA256)
 
-void OTA_Deal_MQTT_Data(uint8_t *data, uint16_t datalen);  //函数声明
-void OTA_Version(void);                           //函数声明
-void OTA_Download(int size, int offset);          //函数声明
+    /* 运行控制 */
+    uint32_t last_req_tick;      // 上次请求的时间戳 (用于超时判断)
+    uint8_t  retry_count;        // 当前块重试次数
+    uint8_t  file_id;            // 文件 ID (固定为 1)
+} OTA_Context_t;
 
-void MQTT_ConnectPack(void);                                  //函数声明
-void MQTT_SubcribPack(char *topic);                           //函数声明
-void MQTT_DealPublishData(uint8_t *data, uint16_t data_len);  //函数声明
-void MQTT_PublishDataQs0(char *topic, char *data);            //函数声明
-void MQTT_PublishDataQs1(char *topic, char *data);            //函数声明
+/* Flash 标志位结构体 (用于 Bootloader 读取，需与 Bootloader 定义一致) */
+typedef struct {
+    uint32_t magic_flag;         // 魔法数，例如 0xAABB1122
+    uint32_t firmware_len;       // 固件长度
+    uint8_t  version[32];        // 版本号
+    uint32_t crc32;              // (可选) CRC校验值
+    uint8_t  reserved[64];
+} OTA_Flash_Info_t;
 
+/* 外部可调用函数 */
 
-#endif
+/**
+ * @brief OTA 初始化
+ * @note  订阅相关 Topic，并上报当前版本号
+ */
+void OTA_Init(void);
 
+/**
+ * @brief OTA 主循环
+ * @note  需要在 main 循环中持续调用，处理超时和状态流转
+ */
+void OTA_Loop(void);
 
+/**
+ * @brief MQTT 消息处理回调
+ * @note  当 ESP8266 收到 MQTT 消息时调用此函数
+ * @param topic   主题字符串
+ * @param payload 消息体指针
+ * @param len     消息体长度
+ */
+void OTA_Process_MQTT_Msg(const char *topic, uint8_t *payload, uint16_t len);
+
+/**
+ * @brief 请求固件信息
+ * @note  向云端请求当前固件版本、大小等信息
+ */
+void OTA_Request_Firmware(void);
+
+#endif /* __OTADRIVER_H */
 

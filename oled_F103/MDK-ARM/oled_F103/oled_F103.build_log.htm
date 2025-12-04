@@ -21,16 +21,37 @@ Target DLL:      CMSIS_AGDI.dll V1.32.13.0
 Dialog DLL:      TCM.DLL V1.48.0.0
  
 <h2>Project:</h2>
-E:\001_LCWork\project_STM32\0.96_oledF103\oled_F103\MDK-ARM\oled_F103.uvprojx
-Project File Date:  08/29/2025
+E:\001_LCWork\project_STM32\stm32_F103_peripheralDriver\oled_F103\MDK-ARM\oled_F103.uvprojx
+Project File Date:  12/04/2025
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'D:\Program Files (x86)\Keil_v5\ARM\ARMCC\Bin'
 Build target 'oled_F103'
 linking...
-Program Size: Code=13772 RO-data=1120 RW-data=1180 ZI-data=2644  
-FromELF: creating hex file...
-"oled_F103\oled_F103.axf" - 0 Error(s), 0 Warning(s).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching startup_stm32f103xb.o(HEAP).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching esp8266.o(.data).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching flash.o(.bss).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching oled.o(.bss).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching otadriver.o(.bss).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching main.o(.bss).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching tim.o(.bss).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching i2c.o(.bss).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching usart.o(.bss).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching md5.o(.data).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching stm32f1xx_hal_flash.o(.bss).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching main.o(.data).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching stm32f1xx_hal.o(.data).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching system_stm32f1xx.o(.data).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching otadriver.o(.data).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching stdout.o(.data).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching mvars.o(.data).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching mvars.o(.data).
+oled_F103\oled_F103.axf: Error: L6406E: No space in execution regions with .ANY selector matching errno.o(.data).
+oled_F103\oled_F103.axf: Error: L6407E: Sections of aggregate size 0x26f4 bytes could not fit into .ANY selector(s).
+Not enough information to list image symbols.
+Not enough information to list load addresses in the image map.
+Finished: 2 information, 0 warning and 20 error messages.
+"oled_F103\oled_F103.axf" - 20 Error(s), 0 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -54,7 +75,8 @@ Package Vendor: Keil
 
    * Component: ARM::CMSIS:CORE:5.4.0
       Include file:  CMSIS\Core\Include\tz_context.h
-Build Time Elapsed:  00:00:01
+Target not created.
+Build Time Elapsed:  00:00:00
 </pre>
 </body>
 </html>
