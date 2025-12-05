@@ -299,7 +299,7 @@ uint8_t ESP8266_init(uint8_t esp8266_mode, uint8_t esp8266_cfg)
             at_ok = 1;
             break;
         }
-        HAL_Delay(500);
+        uart_init.delay_ms(500);
     }
     if(!at_ok)return ESP8266_ERROR;
 
@@ -307,14 +307,14 @@ uint8_t ESP8266_init(uint8_t esp8266_mode, uint8_t esp8266_cfg)
     while (ESP8266_set_mode(esp8266_mode))
     {
         if (++retry > 5) return ESP8266_ERROR;
-        HAL_Delay(500);
+        uart_init.delay_ms(500);
     }
 
     retry = 0;
     while (ESP8266_ate_config(esp8266_cfg))
     {
         if (++retry > 5) return ESP8266_ERROR;
-        HAL_Delay(500);
+        uart_init.delay_ms(500);
     }
 
     retry = 0;
@@ -322,7 +322,7 @@ uint8_t ESP8266_init(uint8_t esp8266_mode, uint8_t esp8266_cfg)
     {
         printf("WiFi Connect Failed, Retrying... %d/5\r\n", retry+1);
         if (++retry > 5) return ESP8266_ERROR;
-        HAL_Delay(500);
+        uart_init.delay_ms(500);
     }
 
     retry = 0;
@@ -333,7 +333,7 @@ uint8_t ESP8266_init(uint8_t esp8266_mode, uint8_t esp8266_cfg)
     {
         printf("MQTT Connect Failed, Retrying... %d/5\r\n", retry+1);
         if (++retry > 5) return ESP8266_ERROR;
-        HAL_Delay(500);
+        uart_init.delay_ms(500);
     }
     return ESP8266_EOK;
 }
