@@ -205,7 +205,6 @@ typedef enum {
     CAPTURE_IDLE = 0,      /* 空闲，可开始新采集 */
     CAPTURE_ONGOING,       /* 正在采集第一帧 */
     CAPTURE_DONE,          /* 一帧采集完成，待处理 */
-    CAPTURE_BUFFERING      /* 正在采集第二帧（双帧缓冲） */
 } OV7725_Capture_State_t;
 
 typedef struct

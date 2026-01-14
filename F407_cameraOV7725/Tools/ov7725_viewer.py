@@ -314,13 +314,24 @@ class OV7725ViewerGUI:
     
     def receive_data_packet(self, expected_idx, expected_size):
         """Receive a single data packet with header validation
-        STM32发送格式：先发送包头(4字节)，再发送数据
+        STM32发送格式：先发送包头(4字节)，再发送数据（分两次CDC_Transmit_FS调用）
         Packet header: [packet_idx_L, packet_idx_H, data_len_L, data_len_H]
         Then data follows separately
         Returns: (data, actual_idx) or (None, -1) on error
         """
-        # Read packet header (4 bytes)
-        pkt_header = self.serial.read(PACKET_HEADER_SIZE)
+        # Read packet header (4 bytes) with retry
+        pkt_header = b''
+        header_timeout = 1.0
+        header_start = time.time()
+        
+        while len(pkt_header) < PACKET_HEADER_SIZE and (time.time() - header_start) < header_timeout:
+            remaining = PACKET_HEADER_SIZE - len(pkt_header)
+            chunk = self.serial.read(remaining)
+            if chunk:
+                pkt_header += chunk
+            else:
+                time.sleep(0.001)
+        
         if len(pkt_header) != PACKET_HEADER_SIZE:
             print(f"[RX] Packet header read failed, got {len(pkt_header)} bytes")
             return (None, -1)
@@ -333,14 +344,19 @@ class OV7725ViewerGUI:
             print(f"[RX] Packet index mismatch: expected {expected_idx}, got {packet_idx}")
             return (None, packet_idx)
         
-        # Read packet data (sent separately by STM32)
+        # Validate data length
+        if data_len > expected_size or data_len == 0:
+            print(f"[RX] Invalid data length: {data_len}, expected max {expected_size}")
+            return (None, -1)
+        
+        # Read packet data (sent separately by STM32 via second CDC_Transmit_FS call)
         data = b''
         remaining = data_len
         read_timeout = 2.0
         start_time = time.time()
         
         while remaining > 0 and (time.time() - start_time) < read_timeout:
-            chunk = self.serial.read(min(remaining, 1024))
+            chunk = self.serial.read(min(remaining, 2048))
             if len(chunk) > 0:
                 data += chunk
                 remaining -= len(chunk)

@@ -31,9 +31,7 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-static volatile uint8_t CDC_TxComplete = 1;  /* 发送完成标志: 1=完成, 0=发送中 */
-static volatile uint32_t CDC_RxLen = 0;      /* 接收数据长度 */
-static volatile uint8_t CDC_RxFlag = 0;      /* 接收数据标志: 1=有数据, 0=无数据 */
+
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -230,7 +228,7 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
     break;
 
     case CDC_SET_CONTROL_LINE_STATE:
-    
+
     break;
 
     case CDC_SEND_BREAK:

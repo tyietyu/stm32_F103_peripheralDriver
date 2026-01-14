@@ -3,11 +3,11 @@
 <title>Static Call Graph - [F407_cameraOV7725\F407_cameraOV7725.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image F407_cameraOV7725\F407_cameraOV7725.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Wed Jan 14 14:43:14 2026
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Wed Jan 14 16:11:32 2026
 <BR><P>
-<H3>Maximum Stack Usage =        632 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
+<H3>Maximum Stack Usage =        568 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
-__rt_entry_main &rArr; main &rArr; OV7725_Process &rArr; OV7725_Send_Frame_USB &rArr; USB_Send_Frame_Header &rArr; USB_Wait_Tx_Complete &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+__rt_entry_main &rArr; main &rArr; OV7725_Setup &rArr; ov7725_Config &rArr; ov7725_set_output &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
 <P>
 <H3>
 Functions with no stack information
@@ -426,8 +426,8 @@ Global Symbols
 <P><STRONG><a name="[1e5]"></a>__rt_entry_postsh_1</STRONG> (Thumb, 0 bytes, Stack size unknown bytes, __rtentry2.o(.ARM.Collect$$rtentry$$00000009))
 
 <P><STRONG><a name="[ad]"></a>__rt_entry_main</STRONG> (Thumb, 0 bytes, Stack size unknown bytes, __rtentry2.o(.ARM.Collect$$rtentry$$0000000D))
-<BR><BR>[Stack]<UL><LI>Max Depth = 632 + Unknown Stack Size
-<LI>Call Chain = __rt_entry_main &rArr; main &rArr; OV7725_Process &rArr; OV7725_Send_Frame_USB &rArr; USB_Send_Frame_Header &rArr; USB_Wait_Tx_Complete &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<BR><BR>[Stack]<UL><LI>Max Depth = 568 + Unknown Stack Size
+<LI>Call Chain = __rt_entry_main &rArr; main &rArr; OV7725_Setup &rArr; ov7725_Config &rArr; ov7725_set_output &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
 </UL>
 <BR>[Calls]<UL><LI><a href="#[ae]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 <LI><a href="#[af]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;exit
@@ -1185,12 +1185,9 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[17b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ov7725_Init
 <LI><a href="#[17c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ov7725_Config
 <LI><a href="#[ae]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
-<LI><a href="#[1af]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_Wait_Tx_Complete
-<LI><a href="#[176]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_Send_Frame_Header
-<LI><a href="#[179]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_Send_Data_Packet
 <LI><a href="#[17a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Setup
 <LI><a href="#[174]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Send_Frame_USB
-<LI><a href="#[e9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_EXTI_Callback
+<LI><a href="#[172]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Process
 <LI><a href="#[1b7]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ov7725_set_special_effect
 <LI><a href="#[1b2]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ov7725_set_output
 <LI><a href="#[1b3]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ov7725_set_light_mode
@@ -1213,8 +1210,7 @@ Global Symbols
 <BR>[Address Reference Count : 1]<UL><LI> startup_stm32f407xx.o(RESET)
 </UL>
 <P><STRONG><a name="[2e]"></a>EXTI4_IRQHandler</STRONG> (Thumb, 10 bytes, Stack size 8 bytes, stm32f4xx_it.o(i.EXTI4_IRQHandler))
-<BR><BR>[Stack]<UL><LI>Max Depth = 472 + Unknown Stack Size
-<LI>Call Chain = EXTI4_IRQHandler &rArr; HAL_GPIO_EXTI_IRQHandler &rArr; HAL_GPIO_EXTI_Callback &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<BR><BR>[Stack]<UL><LI>Max Depth = 24<LI>Call Chain = EXTI4_IRQHandler &rArr; HAL_GPIO_EXTI_IRQHandler &rArr; HAL_GPIO_EXTI_Callback
 </UL>
 <BR>[Calls]<UL><LI><a href="#[e3]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_EXTI_IRQHandler
 </UL>
@@ -1224,6 +1220,7 @@ Global Symbols
 <BR><BR>[Called By]<UL><LI><a href="#[16d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;MX_USB_DEVICE_Init
 <LI><a href="#[16c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;MX_USART1_UART_Init
 <LI><a href="#[16a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;MX_TIM2_Init
+<LI><a href="#[ae]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 <LI><a href="#[180]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;SystemClock_Config
 <LI><a href="#[198]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USBD_LL_Init
 <LI><a href="#[11b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_ResetCallback
@@ -1250,20 +1247,16 @@ Global Symbols
 <LI><a href="#[1ba]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ov7725_reset
 </UL>
 
-<P><STRONG><a name="[e9]"></a>HAL_GPIO_EXTI_Callback</STRONG> (Thumb, 198 bytes, Stack size 16 bytes, ov7725.o(i.HAL_GPIO_EXTI_Callback))
-<BR><BR>[Stack]<UL><LI>Max Depth = 456 + Unknown Stack Size
-<LI>Call Chain = HAL_GPIO_EXTI_Callback &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<P><STRONG><a name="[e9]"></a>HAL_GPIO_EXTI_Callback</STRONG> (Thumb, 104 bytes, Stack size 8 bytes, ov7725.o(i.HAL_GPIO_EXTI_Callback))
+<BR><BR>[Stack]<UL><LI>Max Depth = 8<LI>Call Chain = HAL_GPIO_EXTI_Callback
 </UL>
 <BR>[Calls]<UL><LI><a href="#[ea]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_WritePin
-<LI><a href="#[e7]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
-<LI><a href="#[d9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Write
 </UL>
 <BR>[Called By]<UL><LI><a href="#[e3]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_EXTI_IRQHandler
 </UL>
 
 <P><STRONG><a name="[e3]"></a>HAL_GPIO_EXTI_IRQHandler</STRONG> (Thumb, 24 bytes, Stack size 8 bytes, stm32f4xx_hal_gpio.o(i.HAL_GPIO_EXTI_IRQHandler))
-<BR><BR>[Stack]<UL><LI>Max Depth = 464 + Unknown Stack Size
-<LI>Call Chain = HAL_GPIO_EXTI_IRQHandler &rArr; HAL_GPIO_EXTI_Callback &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<BR><BR>[Stack]<UL><LI>Max Depth = 16<LI>Call Chain = HAL_GPIO_EXTI_IRQHandler &rArr; HAL_GPIO_EXTI_Callback
 </UL>
 <BR>[Calls]<UL><LI><a href="#[e9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_EXTI_Callback
 </UL>
@@ -1305,7 +1298,6 @@ Global Symbols
 <LI><a href="#[1af]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_Wait_Tx_Complete
 <LI><a href="#[e8]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_Delay
 <LI><a href="#[e6]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_DMA_Abort
-<LI><a href="#[e9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_EXTI_Callback
 <LI><a href="#[dd]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_UART_Transmit
 <LI><a href="#[15a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;UART_WaitOnFlagUntilTimeout
 </UL>
@@ -1350,8 +1342,8 @@ Global Symbols
 <P><STRONG><a name="[f0]"></a>HAL_NVIC_SetPriority</STRONG> (Thumb, 124 bytes, Stack size 40 bytes, stm32f4xx_hal_cortex.o(i.HAL_NVIC_SetPriority))
 <BR><BR>[Stack]<UL><LI>Max Depth = 48<LI>Call Chain = HAL_NVIC_SetPriority &rArr; __NVIC_SetPriority
 </UL>
-<BR>[Calls]<UL><LI><a href="#[f2]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__NVIC_SetPriority
-<LI><a href="#[f1]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__NVIC_GetPriorityGrouping
+<BR>[Calls]<UL><LI><a href="#[f1]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__NVIC_GetPriorityGrouping
+<LI><a href="#[f2]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__NVIC_SetPriority
 </UL>
 <BR>[Called By]<UL><LI><a href="#[158]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_UART_MspInit
 <LI><a href="#[13f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_TIM_Base_MspInit
@@ -1727,7 +1719,7 @@ Global Symbols
 <BR><BR>[Called By]<UL><LI><a href="#[146]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_TIM_IRQHandler
 </UL>
 
-<P><STRONG><a name="[14a]"></a>HAL_TIM_PeriodElapsedCallback</STRONG> (Thumb, 42 bytes, Stack size 8 bytes, main.o(i.HAL_TIM_PeriodElapsedCallback))
+<P><STRONG><a name="[14a]"></a>HAL_TIM_PeriodElapsedCallback</STRONG> (Thumb, 44 bytes, Stack size 8 bytes, main.o(i.HAL_TIM_PeriodElapsedCallback))
 <BR><BR>[Stack]<UL><LI>Max Depth = 16<LI>Call Chain = HAL_TIM_PeriodElapsedCallback &rArr; HAL_GPIO_TogglePin
 </UL>
 <BR>[Calls]<UL><LI><a href="#[14e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_TogglePin
@@ -2695,9 +2687,9 @@ Global Symbols
 <BR><BR>[Called By]<UL><LI><a href="#[bd]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__printf
 </UL>
 
-<P><STRONG><a name="[ae]"></a>main</STRONG> (Thumb, 110 bytes, Stack size 8 bytes, main.o(i.main))
-<BR><BR>[Stack]<UL><LI>Max Depth = 632 + Unknown Stack Size
-<LI>Call Chain = main &rArr; OV7725_Process &rArr; OV7725_Send_Frame_USB &rArr; USB_Send_Frame_Header &rArr; USB_Wait_Tx_Complete &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<P><STRONG><a name="[ae]"></a>main</STRONG> (Thumb, 114 bytes, Stack size 8 bytes, main.o(i.main))
+<BR><BR>[Stack]<UL><LI>Max Depth = 568 + Unknown Stack Size
+<LI>Call Chain = main &rArr; OV7725_Setup &rArr; ov7725_Config &rArr; ov7725_set_output &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
 </UL>
 <BR>[Calls]<UL><LI><a href="#[16d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;MX_USB_DEVICE_Init
 <LI><a href="#[16c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;MX_USART1_UART_Init
@@ -2708,6 +2700,7 @@ Global Symbols
 <LI><a href="#[d9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Write
 <LI><a href="#[1b0]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Init
 <LI><a href="#[180]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;SystemClock_Config
+<LI><a href="#[12b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Error_Handler
 <LI><a href="#[17a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Setup
 <LI><a href="#[172]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Process
 </UL>
@@ -2742,7 +2735,7 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[174]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Send_Frame_USB
 </UL>
 
-<P><STRONG><a name="[177]"></a>ov7725_Frame_Read_End</STRONG> (Thumb, 40 bytes, Stack size 0 bytes, ov7725.o(i.ov7725_Frame_Read_End))
+<P><STRONG><a name="[177]"></a>ov7725_Frame_Read_End</STRONG> (Thumb, 8 bytes, Stack size 0 bytes, ov7725.o(i.ov7725_Frame_Read_End))
 <BR><BR>[Called By]<UL><LI><a href="#[174]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Send_Frame_USB
 </UL>
 
@@ -2814,19 +2807,20 @@ Global Symbols
 <H3>
 Local Symbols
 </H3>
-<P><STRONG><a name="[172]"></a>OV7725_Process</STRONG> (Thumb, 14 bytes, Stack size 8 bytes, main.o(i.OV7725_Process))
-<BR><BR>[Stack]<UL><LI>Max Depth = 624 + Unknown Stack Size
-<LI>Call Chain = OV7725_Process &rArr; OV7725_Send_Frame_USB &rArr; USB_Send_Frame_Header &rArr; USB_Wait_Tx_Complete &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<P><STRONG><a name="[172]"></a>OV7725_Process</STRONG> (Thumb, 32 bytes, Stack size 8 bytes, main.o(i.OV7725_Process))
+<BR><BR>[Stack]<UL><LI>Max Depth = 520 + Unknown Stack Size
+<LI>Call Chain = OV7725_Process &rArr; OV7725_Send_Frame_USB &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
 </UL>
 <BR>[Calls]<UL><LI><a href="#[173]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ov7725_Frame_Available
+<LI><a href="#[d9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Write
 <LI><a href="#[174]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Send_Frame_USB
 </UL>
 <BR>[Called By]<UL><LI><a href="#[ae]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
 
-<P><STRONG><a name="[174]"></a>OV7725_Send_Frame_USB</STRONG> (Thumb, 362 bytes, Stack size 72 bytes, main.o(i.OV7725_Send_Frame_USB))
-<BR><BR>[Stack]<UL><LI>Max Depth = 616 + Unknown Stack Size
-<LI>Call Chain = OV7725_Send_Frame_USB &rArr; USB_Send_Frame_Header &rArr; USB_Wait_Tx_Complete &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<P><STRONG><a name="[174]"></a>OV7725_Send_Frame_USB</STRONG> (Thumb, 340 bytes, Stack size 72 bytes, main.o(i.OV7725_Send_Frame_USB))
+<BR><BR>[Stack]<UL><LI>Max Depth = 512 + Unknown Stack Size
+<LI>Call Chain = OV7725_Send_Frame_USB &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
 </UL>
 <BR>[Calls]<UL><LI><a href="#[175]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ov7725_Frame_Read_Start
 <LI><a href="#[177]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ov7725_Frame_Read_End
@@ -2838,7 +2832,7 @@ Local Symbols
 <BR>[Called By]<UL><LI><a href="#[172]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Process
 </UL>
 
-<P><STRONG><a name="[17a]"></a>OV7725_Setup</STRONG> (Thumb, 146 bytes, Stack size 24 bytes, main.o(i.OV7725_Setup))
+<P><STRONG><a name="[17a]"></a>OV7725_Setup</STRONG> (Thumb, 110 bytes, Stack size 24 bytes, main.o(i.OV7725_Setup))
 <BR><BR>[Stack]<UL><LI>Max Depth = 560 + Unknown Stack Size
 <LI>Call Chain = OV7725_Setup &rArr; ov7725_Config &rArr; ov7725_set_output &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
 </UL>
@@ -2849,34 +2843,28 @@ Local Symbols
 <BR>[Called By]<UL><LI><a href="#[ae]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
 
-<P><STRONG><a name="[179]"></a>USB_Send_Data_Packet</STRONG> (Thumb, 172 bytes, Stack size 40 bytes, main.o(i.USB_Send_Data_Packet))
-<BR><BR>[Stack]<UL><LI>Max Depth = 504 + Unknown Stack Size
-<LI>Call Chain = USB_Send_Data_Packet &rArr; USB_Wait_Tx_Complete &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<P><STRONG><a name="[179]"></a>USB_Send_Data_Packet</STRONG> (Thumb, 92 bytes, Stack size 24 bytes, main.o(i.USB_Send_Data_Packet))
+<BR><BR>[Stack]<UL><LI>Max Depth = 180<LI>Call Chain = USB_Send_Data_Packet &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePacket
 </UL>
 <BR>[Calls]<UL><LI><a href="#[e1]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CDC_Transmit_FS
-<LI><a href="#[d9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Write
 <LI><a href="#[1af]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_Wait_Tx_Complete
 </UL>
 <BR>[Called By]<UL><LI><a href="#[174]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Send_Frame_USB
 </UL>
 
-<P><STRONG><a name="[176]"></a>USB_Send_Frame_Header</STRONG> (Thumb, 262 bytes, Stack size 80 bytes, main.o(i.USB_Send_Frame_Header))
-<BR><BR>[Stack]<UL><LI>Max Depth = 544 + Unknown Stack Size
-<LI>Call Chain = USB_Send_Frame_Header &rArr; USB_Wait_Tx_Complete &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<P><STRONG><a name="[176]"></a>USB_Send_Frame_Header</STRONG> (Thumb, 100 bytes, Stack size 32 bytes, main.o(i.USB_Send_Frame_Header))
+<BR><BR>[Stack]<UL><LI>Max Depth = 188<LI>Call Chain = USB_Send_Frame_Header &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePacket
 </UL>
 <BR>[Calls]<UL><LI><a href="#[e1]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CDC_Transmit_FS
-<LI><a href="#[d9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Write
 <LI><a href="#[1af]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_Wait_Tx_Complete
 </UL>
 <BR>[Called By]<UL><LI><a href="#[174]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;OV7725_Send_Frame_USB
 </UL>
 
-<P><STRONG><a name="[1af]"></a>USB_Wait_Tx_Complete</STRONG> (Thumb, 66 bytes, Stack size 24 bytes, main.o(i.USB_Wait_Tx_Complete))
-<BR><BR>[Stack]<UL><LI>Max Depth = 464 + Unknown Stack Size
-<LI>Call Chain = USB_Wait_Tx_Complete &rArr; CAW_LOG_Write &rArr; __2snprintf &rArr; _printf_char_common &rArr; __printf
+<P><STRONG><a name="[1af]"></a>USB_Wait_Tx_Complete</STRONG> (Thumb, 50 bytes, Stack size 16 bytes, main.o(i.USB_Wait_Tx_Complete))
+<BR><BR>[Stack]<UL><LI>Max Depth = 16<LI>Call Chain = USB_Wait_Tx_Complete
 </UL>
 <BR>[Calls]<UL><LI><a href="#[e7]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
-<LI><a href="#[d9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Write
 </UL>
 <BR>[Called By]<UL><LI><a href="#[176]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_Send_Frame_Header
 <LI><a href="#[179]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_Send_Data_Packet

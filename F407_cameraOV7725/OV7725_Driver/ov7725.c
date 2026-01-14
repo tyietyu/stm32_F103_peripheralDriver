@@ -590,28 +590,14 @@ uint16_t ov7725_Frame_Read_Chunk(uint8_t *buffer, uint16_t pixel_count)
 }
 
 volatile OV7725_Capture_State_t capture_state = CAPTURE_IDLE;
-static uint32_t capture_done_timestamp = 0;
-static volatile uint8_t pending_frame_count = 0;  /* 待处理帧计数 */
 
 /**
- * @brief 结束读取OV7725帧数据（双帧缓冲版本）
- * @note 读取完成后，如果有待处理帧，继续处理；否则允许新采集
+ * @brief 结束读取OV7725帧数据，允许新一帧采集
+ * @note USB发送完成后调用此函数，将状态重置为IDLE，允许VSYNC触发新采集
  */
 void ov7725_Frame_Read_End(void)
 {
-    if (pending_frame_count > 0)
-    {
-        /* 还有待处理帧，继续保持CAPTURE_DONE状态 */
-        pending_frame_count--;
-        if (pending_frame_count == 0)
-        {
-            capture_state = CAPTURE_IDLE;
-        }
-    }
-    else
-    {
-        capture_state = CAPTURE_IDLE;
-    }
+    capture_state = CAPTURE_IDLE;
 }
 
 /**
@@ -648,29 +634,15 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
             {
                 /* 采集中：一帧录入完成 */
                 OV7725_WEN(0);
-                capture_done_timestamp = HAL_GetTick();
                 capture_state = CAPTURE_DONE;
-                pending_frame_count = 0;
                 break;
             }
             case CAPTURE_DONE:
             {
-                if (HAL_GetTick() - capture_done_timestamp > 5000)
-                {
-                    capture_state = CAPTURE_IDLE;
-                    pending_frame_count = 0;
-                    CAW_LOG_WARN("Frame processing timeout! Reset to IDLE.");
-                }
                 break;
             }
-            case CAPTURE_BUFFERING:
-            {
-                /* 缓冲采集中：第二帧录入完成 */
-                OV7725_WEN(0);
-                pending_frame_count++;
-                capture_state = CAPTURE_DONE;
+            default:   
                 break;
-            }
         }
     }
 }
