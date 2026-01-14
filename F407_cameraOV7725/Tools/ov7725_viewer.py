@@ -25,7 +25,7 @@ FRAME_HEADER_SYNC1 = 0xAA
 FRAME_HEADER_SYNC2 = 0x55
 FRAME_HEADER_END1 = 0xA5
 FRAME_HEADER_END2 = 0x5A
-FRAME_HEADER_SIZE = 10  # 同步字(2B) + 帧号(2B) + 总包数(2B) + 每包大小(2B) + 结束字(2B)
+FRAME_HEADER_SIZE = 14  # 同步字(2B) + 帧号(2B) + 总包数(2B) + 每包大小(2B) + 包序号(2B) + 数据长度(2B) + 结束字(2B)
 
 # Packet header definition
 PACKET_HEADER_SIZE = 4
@@ -247,9 +247,10 @@ class OV7725ViewerGUI:
     
     def find_frame_header(self):
         """Search for frame header in serial stream
-        Header format (10 bytes): 
+        Header format (14 bytes): 
             [0xAA, 0x55, frame_idx_L, frame_idx_H, 
-             total_packets_L, total_packets_H, packet_size_L, packet_size_H, 0xA5, 0x5A]
+             total_packets_L, total_packets_H, packet_size_L, packet_size_H,
+             pkt_idx_L, pkt_idx_H, data_len_L, data_len_H, 0xA5, 0x5A]
         Returns: (frame_idx, total_packets, packet_size) or None if not found
         """
         max_bytes_to_search = 4096  # 最多搜索4KB数据
@@ -291,22 +292,24 @@ class OV7725ViewerGUI:
                     
                 if byte2[0] == FRAME_HEADER_SYNC2:
                     print(f"[RX] Found sync bytes 0xAA 0x55!")
-                    # Found sync, read rest of header
+                    # Found sync, read rest of header (14 - 2 = 12 bytes)
                     header_rest = self.serial.read(FRAME_HEADER_SIZE - 2)
                     if len(header_rest) == FRAME_HEADER_SIZE - 2:
                         bytes_searched += len(header_rest)
                         raw_bytes.extend(header_rest)
-                        print(f"[RX] Header: {' '.join(f'{b:02X}' for b in raw_bytes[-10:])}")
-                        # Verify end markers (at positions 6 and 7)
-                        if header_rest[6] == FRAME_HEADER_END1 and header_rest[7] == FRAME_HEADER_END2:
+                        print(f"[RX] Header: {' '.join(f'{b:02X}' for b in raw_bytes[-14:])}")
+                        # Verify end markers (at positions 10 and 11 in header_rest, i.e., bytes 12-13 of full header)
+                        if header_rest[10] == FRAME_HEADER_END1 and header_rest[11] == FRAME_HEADER_END2:
                             # Parse header
                             frame_idx = struct.unpack('<H', header_rest[0:2])[0]
                             total_packets = struct.unpack('<H', header_rest[2:4])[0]
                             packet_size = struct.unpack('<H', header_rest[4:6])[0]
+                            # header_rest[6:8] = pkt_idx (0 in frame header)
+                            # header_rest[8:10] = data_len (0 in frame header)
                             print(f"[RX] Valid header: frame={frame_idx}, packets={total_packets}, size={packet_size}")
                             return (frame_idx, total_packets, packet_size)
                         else:
-                            print(f"[RX] Invalid end markers: {header_rest[6]:02X} {header_rest[7]:02X}")
+                            print(f"[RX] Invalid end markers: {header_rest[10]:02X} {header_rest[11]:02X}")
         
         if raw_bytes:
             print(f"[RX] Searched {bytes_searched} bytes, first 50: {' '.join(f'{b:02X}' for b in raw_bytes[:50])}")

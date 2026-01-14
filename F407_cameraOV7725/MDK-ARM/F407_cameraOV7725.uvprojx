@@ -608,6 +608,11 @@
               <FileType>1</FileType>
               <FilePath>..\OV7725_Driver\ov7725.c</FilePath>
             </File>
+            <File>
+              <FileName>display_app.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OV7725_Driver\display_app.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

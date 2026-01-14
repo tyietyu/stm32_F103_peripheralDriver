@@ -98,7 +98,7 @@ static const uint8_t OV7725_init_cfg[65][2] = {
 /* OV7725设备信息枚举 */
 typedef enum
 {
-    OV7725_SCCB_ADDR  = 0x21,   /* SCCB通讯设备地址 */
+    OV7725_SCCB_ADDR  = 0x21,          /* SCCB通讯设备地址 */
     OV7725_MID_DEVICE = 0x7FA2,        /* 模块ID */
     OV7725_PID_DEVICE = 0x7721,        /* 产品ID */
 }OV7725_Device_Info_t;
@@ -212,7 +212,9 @@ typedef struct
     iic_bus_t *bus;                     /* I2C总线 */
     uint8_t addr;                       /* 设备地址 */
     uint16_t image_width;               /* 宽度 */
-    uint16_t image_height;              /* 高度 */              /* 处理图像帧信息 */
+    uint16_t image_height;              /* 高度 */
+    uint16_t mid;                       /* 模块ID */
+    uint16_t pid;                       /* 产品ID */
 } OV7725_Handle_t;
 
 /**

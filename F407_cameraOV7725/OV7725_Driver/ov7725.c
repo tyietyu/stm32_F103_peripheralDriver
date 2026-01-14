@@ -13,6 +13,8 @@ OV7725_Handle_t OV7725_Camera = {
     .addr = OV7725_SCCB_ADDR,
     .image_width = OV7725_QVGA_WIDTH_MAX,
     .image_height = OV7725_QVGA_HEIGHT_MAX,
+    .mid = OV7725_MID_DEVICE,
+    .pid = OV7725_PID_DEVICE,
 };
 
 /**
@@ -408,18 +410,6 @@ static void ov7725_output_image(bool enable)
     {
         OV7725_OE(1);
     }
-}
-
-/**
- * @brief 获取OV7725模块输出图像宽度和高度
- * @param width : 图像宽度指针
- * @param height: 图像高度指针
- * @retval 无
- */
-static void ov7725_get_output_size(uint16_t *width, uint16_t *height)
-{
-    *width = OV7725_Camera.image_width;
-    *height = OV7725_Camera.image_height;
 }
 
 /**

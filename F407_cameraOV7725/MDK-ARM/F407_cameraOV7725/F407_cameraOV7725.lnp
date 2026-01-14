@@ -37,6 +37,7 @@
 "f407_cameraov7725\hal_iic.o"
 "f407_cameraov7725\log.o"
 "f407_cameraov7725\ov7725.o"
+"f407_cameraov7725\display_app.o"
 --strict --scatter "F407_cameraOV7725\F407_cameraOV7725.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
