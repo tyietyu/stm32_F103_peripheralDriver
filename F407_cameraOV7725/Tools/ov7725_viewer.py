@@ -9,6 +9,7 @@ Dependencies:
 """
 
 import sys
+import os
 import time
 import threading
 import tkinter as tk
@@ -19,6 +20,9 @@ from PIL import Image, ImageTk
 import serial
 import serial.tools.list_ports
 import struct
+
+# 获取脚本所在目录
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Frame header definition (must match STM32 settings)
 FRAME_HEADER_SYNC1 = 0xAA
@@ -512,11 +516,12 @@ class OV7725ViewerGUI:
             self.canvas.create_image(x, y, anchor=tk.NW, image=self.photo)
             
     def save_frame(self):
-        """Save current frame to file"""
+        """Save current frame to file (保存到py文件同目录下)"""
         if self.current_image is not None:
             filename = f"frame_{self.stm32_frame_idx}_{int(time.time())}.png"
-            cv2.imwrite(filename, cv2.cvtColor(self.current_image, cv2.COLOR_RGB2BGR))
-            messagebox.showinfo("Saved", f"Frame saved as {filename}")
+            filepath = os.path.join(SCRIPT_DIR, filename)
+            cv2.imwrite(filepath, cv2.cvtColor(self.current_image, cv2.COLOR_RGB2BGR))
+            messagebox.showinfo("Saved", f"Frame saved as:\n{filepath}")
         else:
             messagebox.showwarning("Warning", "No image to save")
             
