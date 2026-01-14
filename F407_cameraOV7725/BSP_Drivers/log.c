@@ -20,6 +20,7 @@ int CAW_LOG_Init(UART_HandleTypeDef* huart, CAW_LOG_LEVEL level, bool enable_col
   G_CAW_LOG_Instance.uart_ins = huart;
   G_CAW_LOG_Instance.enable_color = enable_color;
   G_CAW_LOG_Instance.level = level;
+  return 0;
 }
 
 void CAW_LOG_Write(const char* fmt, CAW_LOG_LEVEL level, const char* file, int line, const char* func, ...) 
@@ -30,7 +31,7 @@ void CAW_LOG_Write(const char* fmt, CAW_LOG_LEVEL level, const char* file, int l
   memset(tmp, 0, sizeof(tmp));
   memset(buf, 0, sizeof(buf));
   va_list args;
-  va_start(args, fmt);
+  va_start(args, func);
   vsprintf(tmp, (char*)fmt, args);
   va_end(args);
   while (HAL_UART_GetState(G_CAW_LOG_Instance.uart_ins) != HAL_UART_STATE_READY)
@@ -84,8 +85,6 @@ void CAW_LOG_Write(const char* fmt, CAW_LOG_LEVEL level, const char* file, int l
     return;
   }
 
-  HAL_UART_Transmit_IT(G_CAW_LOG_Instance.uart_ins, buf, strlen(buf) + 1);
-  while (HAL_UART_GetState(G_CAW_LOG_Instance.uart_ins) == HAL_UART_STATE_BUSY_TX)
-    ;
+  HAL_UART_Transmit(G_CAW_LOG_Instance.uart_ins, (uint8_t*)buf, strlen(buf), 10);
 }
 

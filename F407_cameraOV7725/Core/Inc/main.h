@@ -32,6 +32,7 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdbool.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -86,6 +87,8 @@ void Error_Handler(void);
 #define VSYNC_EXTI_IRQn EXTI4_IRQn
 #define FIFO_WEN_Pin GPIO_PIN_5
 #define FIFO_WEN_GPIO_Port GPIOC
+#define LED_Pin GPIO_PIN_2
+#define LED_GPIO_Port GPIOB
 #define OV_SCL_Pin GPIO_PIN_6
 #define OV_SCL_GPIO_Port GPIOB
 #define OV_SDA_Pin GPIO_PIN_7

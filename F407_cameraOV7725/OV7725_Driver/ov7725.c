@@ -511,12 +511,6 @@ uint8_t ov7725_Get_Frame_Data(volatile uint16_t *dts, ov7725_get_frame_type_t ty
     uint16_t height_index;
     uint16_t dat;
 
-    if (OV7725_Camera.frame.frame_process_flag == 0)
-    {
-        CAW_LOG_INFO("NO Frame Data !");
-        return OV7725_EEMPTY;
-    }
-
     OV7725_RRST(0);
     OV7725_RCLK(0);
     OV7725_RCLK(1);
@@ -554,10 +548,7 @@ uint8_t ov7725_Get_Frame_Data(volatile uint16_t *dts, ov7725_get_frame_type_t ty
             }
         }
     }
-
-    OV7725_Camera.frame.frame_process_flag = 0;
-    OV7725_Camera.frame.frame_count++;
-
+    
     return OV7725_OK;
 }
 
@@ -567,12 +558,6 @@ uint8_t ov7725_Get_Frame_Data(volatile uint16_t *dts, ov7725_get_frame_type_t ty
  */
 uint8_t ov7725_Frame_Read_Start(void)
 {
-    if (OV7725_Camera.frame.frame_process_flag == 0)
-    {
-        CAW_LOG_ERROR("ov7725_Frame_Read_Start Error! : NO Frame Data !");
-        return OV7725_EEMPTY;
-    }
-
     OV7725_RRST(0);
     OV7725_RCLK(0);
     OV7725_RCLK(1);
@@ -606,20 +591,43 @@ uint16_t ov7725_Frame_Read_Chunk(uint8_t *buffer, uint16_t pixel_count)
 
 volatile OV7725_Capture_State_t capture_state = CAPTURE_IDLE;
 static uint32_t capture_done_timestamp = 0;
+static volatile uint8_t pending_frame_count = 0;  /* 待处理帧计数 */
+
 /**
- * @brief 结束读取OV7725帧数据
+ * @brief 结束读取OV7725帧数据（双帧缓冲版本）
+ * @note 读取完成后，如果有待处理帧，继续处理；否则允许新采集
  */
 void ov7725_Frame_Read_End(void)
 {
-    OV7725_Camera.frame.frame_process_flag = 0;
-    OV7725_Camera.frame.frame_count++;
-    capture_state = CAPTURE_IDLE;
+    if (pending_frame_count > 0)
+    {
+        /* 还有待处理帧，继续保持CAPTURE_DONE状态 */
+        pending_frame_count--;
+        if (pending_frame_count == 0)
+        {
+            capture_state = CAPTURE_IDLE;
+        }
+    }
+    else
+    {
+        capture_state = CAPTURE_IDLE;
+    }
 }
 
 /**
- * @brief OV7725 VSYNC外部中断服务函数
+ * @brief 检查是否有帧数据可读
+ * @return 1: 有数据可读, 0: 无数据
+ */
+uint8_t ov7725_Frame_Available(void)
+{
+    return (capture_state == CAPTURE_DONE);
+}
+
+/**
+ * @brief OV7725 VSYNC外部中断服务函数（双帧缓冲版本）
  * @param GPIO_Pin: 触发中断的GPIO引脚
- * @retval 无
+ * @note 支持连续采集：在读取帧1时可以同时采集帧2
+ *       FIFO容量384KB，QVGA帧150KB，可存储2帧
  */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
@@ -629,33 +637,38 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         {
             case CAPTURE_IDLE:
             {
-                /* 第一个 VSYNC 到来：开始写入 FIFO */
-                if (OV7725_Camera.frame.frame_process_flag == 0)
-                {
-                    OV7725_WRST(0);
-                    OV7725_WEN(1);
-                    OV7725_WRST(1);
-                    capture_state = CAPTURE_ONGOING;
-                }
+                /* 空闲状态：开始采集新帧 */
+                OV7725_WRST(0);
+                OV7725_WEN(1);
+                OV7725_WRST(1);
+                capture_state = CAPTURE_ONGOING;
                 break;
             }
             case CAPTURE_ONGOING:
             {
-                /* 第二个 VSYNC 到来：一帧录入完成 */
+                /* 采集中：一帧录入完成 */
                 OV7725_WEN(0);
-                OV7725_Camera.frame.frame_process_flag = 1;
                 capture_done_timestamp = HAL_GetTick();
                 capture_state = CAPTURE_DONE;
+                pending_frame_count = 0;
                 break;
             }
             case CAPTURE_DONE:
             {
-                if (HAL_GetTick() - capture_done_timestamp > 1000)
+                if (HAL_GetTick() - capture_done_timestamp > 5000)
                 {
                     capture_state = CAPTURE_IDLE;
-                    OV7725_Camera.frame.frame_process_flag = 0;
-                    CAW_LOG_WARN("Capture Done Timeout! Forcing reset to IDLE.");
+                    pending_frame_count = 0;
+                    CAW_LOG_WARN("Frame processing timeout! Reset to IDLE.");
                 }
+                break;
+            }
+            case CAPTURE_BUFFERING:
+            {
+                /* 缓冲采集中：第二帧录入完成 */
+                OV7725_WEN(0);
+                pending_frame_count++;
+                capture_state = CAPTURE_DONE;
                 break;
             }
         }

@@ -90,7 +90,7 @@
   */
 
 /** CDC Interface callback. */
-extern USBD_CDC_ItfTypeDef USBD_Interface_fops_HS;
+extern USBD_CDC_ItfTypeDef USBD_Interface_fops_FS;
 
 /* USER CODE BEGIN EXPORTED_VARIABLES */
 
@@ -105,12 +105,10 @@ extern USBD_CDC_ItfTypeDef USBD_Interface_fops_HS;
   * @{
   */
 
-uint8_t CDC_Transmit_HS(uint8_t* Buf, uint16_t Len);
+uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
-uint8_t CDC_GetRxData(uint8_t *buf, uint32_t *len);
-uint8_t CDC_IsTxComplete(void);
-uint8_t CDC_WaitTxComplete(uint32_t timeout);
+
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**
@@ -130,3 +128,4 @@ uint8_t CDC_WaitTxComplete(uint32_t timeout);
 #endif
 
 #endif /* __USBD_CDC_IF_H__ */
+

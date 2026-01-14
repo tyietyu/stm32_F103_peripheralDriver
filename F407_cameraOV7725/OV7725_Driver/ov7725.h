@@ -200,26 +200,20 @@ typedef enum
     OV7725_GET_FRAME_TYPE_AUTO_INC,        /* 目的地址自增 */
 } ov7725_get_frame_type_t;
 
-// OV7725模块捕获状态枚举
+// OV7725模块捕获状态枚举（支持双帧缓冲）
 typedef enum {
-    CAPTURE_IDLE = 0,
-    CAPTURE_ONGOING,
-    CAPTURE_DONE
+    CAPTURE_IDLE = 0,      /* 空闲，可开始新采集 */
+    CAPTURE_ONGOING,       /* 正在采集第一帧 */
+    CAPTURE_DONE,          /* 一帧采集完成，待处理 */
+    CAPTURE_BUFFERING      /* 正在采集第二帧（双帧缓冲） */
 } OV7725_Capture_State_t;
-
-typedef struct
-{
-    volatile uint8_t frame_process_flag;
-    volatile uint16_t frame_count;
-}ov7725_frame_t;
 
 typedef struct
 {
     iic_bus_t *bus;                     /* I2C总线 */
     uint8_t addr;                       /* 设备地址 */
     uint16_t image_width;               /* 宽度 */
-    uint16_t image_height;              /* 高度 */
-    ov7725_frame_t frame;               /* 处理图像帧信息 */
+    uint16_t image_height;              /* 高度 */              /* 处理图像帧信息 */
 } OV7725_Handle_t;
 
 /**
@@ -271,5 +265,11 @@ uint16_t ov7725_Frame_Read_Chunk(uint8_t *buffer, uint16_t pixel_count);
  * @brief 结束读取OV7725帧数据
  */
 void ov7725_Frame_Read_End(void);
+
+/**
+ * @brief 检查是否有帧数据可读
+ * @return 1: 有数据可读, 0: 无数据
+ */
+uint8_t ov7725_Frame_Available(void);
 
 #endif // __OV7725_H__
