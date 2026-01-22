@@ -146,11 +146,10 @@ int main(void)
   FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);
   FOC_SetVoltageLimit(&foc, 24.0f);
   FOC_HAL_InitA(&foc);
-  PID_Init(&velPID, 0.05f, 0.01f, 0.0f, 1000.0f,foc.voltage_power_supply / 2);
-  PID_Init(&anglePID, 2, 0, 0, 100000.0f, 100);
+  PID_Init(&velPID, 0.5f, 0.01f, 0.0f, 1000.0f,foc.voltage_power_supply / 2);
+  PID_Init(&anglePID, 0.5f, 0.01f, 0.0f, 100000.0f, 100);
   LOWPASS_FILTER_Init(&velFilter, 0.01f);
   FOC_AlignmentSensor(&foc);
-  FOC_CurrentLoop_Init(&foc);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -160,16 +159,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    // 速度环在主循环执行 (1kHz)，电流环在ADC中断执行 (15kHz)
     if(g_bldc_motor_status.flag)
     {
       g_bldc_motor_status.flag = 0;
       FOC_SensorUpdate(&foc);
-      // 2. 速度环计算
-      float current_vel = foc.Sensor_GetVelocity();
-      current_vel = LOWPASS_FILTER_Calc(&velFilter, foc.dir * current_vel);
-      float Iq_cmd = PID_Calc(&velPID, target_velocity - current_vel);
-      // 3. 执行电流闭环
-      FOC_SetCurrent(&foc, Iq_cmd, FOC_CloseloopElectricalAngle(&foc));
+      // 执行 FOC 闭环速度控制
+      Foc_TestCloseloopVelocity(&foc, &velFilter, &velPID, target_velocity);
     }
 
     if(g_led_status.flag)
@@ -259,13 +255,15 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
   const float factor = ADC_REF_VOLTAGE / ADC_RESOLUTION;
   if (hadc->Instance == ADC1)
   {
+    // 1. 采集三相电流
     float raw_iu = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
     float raw_iv = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_2);
     float raw_iw = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_3);
 
-    foc.I_u = (raw_iu * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
-    foc.I_v = (raw_iv * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
-    foc.I_w = (raw_iw * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
+    g_monitor_data.I_U = (raw_iu * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
+    g_monitor_data.I_V = (raw_iv * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
+    g_monitor_data.I_W = (raw_iw * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
+
   }
 }
 

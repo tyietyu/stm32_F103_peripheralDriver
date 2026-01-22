@@ -8,8 +8,6 @@
 #ifndef __FOC_H__
 #define __FOC_H__
 #include "tim.h"
-#include "pid.h"
-
 
 // 获取编码器弧度值的函数指针
 typedef void (*FUNC_SENSOR_UPDATE)();
@@ -34,18 +32,6 @@ typedef struct
   int dir; // 方向
   int pp;  // 极对数
 
-  /* 电流环新增变量*/
-  float I_u, I_v, I_w;          // 实测三相电流
-  float I_alpha, I_beta;        // Clarke 变换结果
-  float I_d, I_q;              // Park 变换结果
-  
-  PID_T pid_id;                 // D轴电流PID
-  PID_T pid_iq;                 // Q轴电流PID
-  
-  float target_Iq;              // 目标电流（力矩）
-  float target_Id;              // 目标 D 轴电流（通常为 0）
-  /*end*/
-
   FUNC_SENSOR_UPDATE Sensor_Update;
   FUNC_SENSOR_GET_ONCE_ANGLE Sensor_GetOnceAngle;
   FUNC_SENSOR_GET_ANGLE Sensor_GetAngle;
@@ -66,9 +52,5 @@ void FOC_Bind_SensorGetVelocity(FOC_T *hfoc, FUNC_SENSOR_GET_VELOCITY s);
 
 float _normalizeAngle(float angle);
 float _openloop_electricalAngle(float shaft_angle, int pole_pairs);
-
-void FOC_SetCurrent(FOC_T *hfoc, float Iq_target, float angle_el);
-void FOC_CurrentLoop_Init(FOC_T *hfoc);
-
 #endif
 
