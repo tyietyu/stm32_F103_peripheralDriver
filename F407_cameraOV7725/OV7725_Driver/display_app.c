@@ -1,5 +1,4 @@
 #include "display_app.h"
-
 #include "log.h"
 #include "ov7725.h"
 #include "usbd_cdc_if.h"
