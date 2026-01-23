@@ -16,11 +16,11 @@ static uint8_t as5600_deinit_1(void)
 }
 static uint8_t as5600_read_1(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
 { 
-    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_1].iic_bus, addr, reg, len, data); 
+    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_1].iic_bus, addr, reg, data, len); 
 }
 static uint8_t as5600_write_1(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len)
 { 
-    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_1].iic_bus, addr, reg, len, data); 
+    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_1].iic_bus, addr, reg, data, len); 
 }
 
 // 设备2的回调
@@ -34,11 +34,11 @@ static uint8_t as5600_deinit_2(void)
 }
 static uint8_t as5600_read_2(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
 { 
-    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_2].iic_bus, addr, reg, len, data); 
+    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_2].iic_bus, addr, reg, data, len); 
 }
 static uint8_t as5600_write_2(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
 { 
-    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_2].iic_bus, addr, reg, len, data); 
+    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_2].iic_bus, addr, reg, data, len); 
 }
 
 // 设备3的回调
@@ -52,11 +52,11 @@ static uint8_t as5600_deinit_3(void)
 }
 static uint8_t as5600_read_3(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
 { 
-    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_3].iic_bus, addr, reg, len, data); 
+    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_3].iic_bus, addr, reg, data, len); 
 }
 static uint8_t as5600_write_3(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
 { 
-    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_3].iic_bus, addr, reg, len, data); 
+    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_3].iic_bus, addr, reg, data, len); 
 }
 
 as5600_device_t g_as5600_devices[AS5600_DEVICE_COUNT] = {
