@@ -9,7 +9,7 @@ extern volatile OV7725_Capture_State_t capture_state;
 extern USBD_HandleTypeDef hUsbDeviceHS;  /* 使用USB HS模式 */
 
 /* 双缓冲区: 包头(4字节) + 数据，合并发送提高效率 */
-static uint8_t usb_tx_buffer[2][4 + PACKET_DATA_SIZE];
+static uint8_t usb_tx_buffer[2][PACKET_HEAD_SIZE + PACKET_DATA_SIZE];
 
 OV7725_DisplayApp_Handle_t OV7725_DisplayApp = {
     .frame_head = (FRAME_HEADER_SYNC1 << 8) | FRAME_HEADER_SYNC2,
@@ -110,7 +110,7 @@ static uint8_t USB_Send_Data_Packet(uint8_t *buffer, uint16_t data_len, uint16_t
   }
 
   /* 包头和数据一次性发送，减少USB事务开销 */
-  if (CDC_Transmit_HS(buffer, 4 + data_len) != USBD_OK)
+  if (CDC_Transmit_HS(buffer, PACKET_HEAD_SIZE + data_len) != USBD_OK)
   {
     CAW_LOG_ERROR("USB sending packet failed");
     return HAL_ERROR;
@@ -155,7 +155,7 @@ static void OV7725_Send_Frame_USB(void)
   /* 预读第一块数据（偏移4字节，留出包头位置） */
   uint16_t first_chunk_bytes = (total_bytes > bytes_per_chunk) ? bytes_per_chunk : total_bytes;
   uint16_t first_chunk_pixels = first_chunk_bytes / 2;
-  ov7725_Frame_Read_Chunk(&usb_tx_buffer[write_idx][4], first_chunk_pixels);
+  ov7725_Frame_Read_Chunk(&usb_tx_buffer[write_idx][PACKET_HEAD_SIZE], first_chunk_pixels);
   bytes_read += first_chunk_bytes;
 
   while (bytes_sent < total_bytes && send_ok)
@@ -177,7 +177,7 @@ static void OV7725_Send_Frame_USB(void)
     {
       uint16_t next_bytes = (total_bytes - bytes_read) > bytes_per_chunk ? bytes_per_chunk : (total_bytes - bytes_read);
       uint16_t next_pixels = next_bytes / 2;
-      ov7725_Frame_Read_Chunk(&usb_tx_buffer[write_idx][4], next_pixels);
+      ov7725_Frame_Read_Chunk(&usb_tx_buffer[write_idx][PACKET_HEAD_SIZE], next_pixels);
       bytes_read += next_bytes;
     }
     bytes_sent += current_bytes;

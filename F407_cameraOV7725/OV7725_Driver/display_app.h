@@ -10,9 +10,8 @@
 #define FRAME_HEADER_END2       0x5A
 #define FRAME_HEADER_SIZE       14      /* 同步字(2) + 帧号(2) + 总包数(2) + 每包大小(2) +包序号(2) + 数据长度(2) + 结束字(2) */
 
-#define PACKET_DATA_SIZE        2048    /* 每包中图像数据的大小 */
-#define FRAME_DATA_SIZE         (FRAME_HEADER_SIZE + PACKET_DATA_SIZE) /* 每包总大小 = 包头 + 数据 */
-
+#define PACKET_HEAD_SIZE        4       /* 包头大小: 包序号(2) + 数据长度(2) */
+#define PACKET_DATA_SIZE        2044    /* 每包中图像数据的大小 */
 #pragma pack(1)
 typedef struct 
 {
