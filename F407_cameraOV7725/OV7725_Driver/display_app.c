@@ -75,7 +75,7 @@ static uint8_t USB_Send_Frame_Header(uint16_t frame_idx, uint16_t total_packets,
   header[12] = OV7725_DisplayApp.frame_tail >> 8;
   header[13] = OV7725_DisplayApp.frame_tail & 0xFF;
 
-  if (USB_Wait_Tx_Complete(500) != HAL_OK)
+  if (USB_Wait_Tx_Complete(50) != HAL_OK)
   {
     return HAL_ERROR;
   }
