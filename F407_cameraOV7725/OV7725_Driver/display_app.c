@@ -6,9 +6,10 @@
 
 extern OV7725_Handle_t OV7725_Camera;
 extern volatile OV7725_Capture_State_t capture_state;
-extern USBD_HandleTypeDef hUsbDeviceFS;
+extern USBD_HandleTypeDef hUsbDeviceHS;  /* ä½¿ç”¨USB HSæ¨¡å¼ */
 
-static uint8_t usb_tx_buffer[2][PACKET_DATA_SIZE];  /* Ë«»º³åÇø */
+/* åŒç¼“å†²åŒº: åŒ…å¤´(4å­—èŠ‚) + æ•°æ®ï¼Œåˆå¹¶å‘é€æé«˜æ•ˆç‡ */
+static uint8_t usb_tx_buffer[2][4 + PACKET_DATA_SIZE];
 
 OV7725_DisplayApp_Handle_t OV7725_DisplayApp = {
     .frame_head = (FRAME_HEADER_SYNC1 << 8) | FRAME_HEADER_SYNC2,
@@ -19,12 +20,12 @@ OV7725_DisplayApp_Handle_t OV7725_DisplayApp = {
 };
 
 /**
- * @brief µÈ´ı USB CDC ·¢ËÍ»º³åÇø¿ÕÏĞ
+ * @brief ç­‰å¾… USB CDC å‘é€ç¼“å†²åŒºç©ºé—²
  */
 static uint8_t USB_Wait_Tx_Complete(uint32_t timeout_ms)
 {
   uint32_t start_time = HAL_GetTick();
-  USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
+  USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceHS.pClassData;
   
   if (hcdc == NULL)
   {
@@ -44,33 +45,33 @@ static uint8_t USB_Wait_Tx_Complete(uint32_t timeout_ms)
 }
 
 /**
- * @brief ·¢ËÍÖ¡Í· (14×Ö½Ú)
- * @note Ö¡Í·¸ñÊ½: Í¬²½×Ö(2) + Ö¡ºÅ(2) + ×Ü°üÊı(2) + Ã¿°ü´óĞ¡(2) + °üĞòºÅ(2) + Êı¾İ³¤¶È(2) + ½áÊø×Ö(2)
- * @return HAL_OK³É¹¦, HAL_ERRORÊ§°Ü
+ * @brief å‘é€å¸§å¤´ (14å­—èŠ‚)
+ * @note å¸§å¤´æ ¼å¼: åŒæ­¥å­—(2) + å¸§å·(2) + æ€»åŒ…æ•°(2) + æ¯åŒ…å¤§å°(2) + åŒ…åºå·(2) + æ•°æ®é•¿åº¦(2) + ç»“æŸå­—(2)
+ * @return HAL_OKæˆåŠŸ, HAL_ERRORå¤±è´¥
  */
 static uint8_t USB_Send_Frame_Header(uint16_t frame_idx, uint16_t total_packets, uint16_t packet_size)
 {
   uint8_t header[FRAME_HEADER_SIZE];
   
-  /* Í¬²½×Ö (2B) */
+  /* åŒæ­¥å­— (2B) */
   header[0] = OV7725_DisplayApp.frame_head >> 8;
   header[1] = OV7725_DisplayApp.frame_head & 0xFF;
-  /* Ö¡ºÅ (2B) */
+  /* å¸§å· (2B) */
   header[2] = (uint8_t)(frame_idx & 0xFF);
   header[3] = (uint8_t)((frame_idx >> 8) & 0xFF);
-  /* ×Ü°üÊı (2B) */
+  /* æ€»åŒ…æ•° (2B) */
   header[4] = (uint8_t)(total_packets & 0xFF);
   header[5] = (uint8_t)((total_packets >> 8) & 0xFF);
-  /* Ã¿°ü´óĞ¡ (2B) */
+  /* æ¯åŒ…å¤§å° (2B) */
   header[6] = (uint8_t)(packet_size & 0xFF);
   header[7] = (uint8_t)((packet_size >> 8) & 0xFF);
-  /* °üĞòºÅ (2B) - Ö¡Í·ÖĞÎª0 */
+  /* åŒ…åºå· (2B) - å¸§å¤´ä¸­ä¸º0 */
   header[8] = 0x00;
   header[9] = 0x00;
-  /* Êı¾İ³¤¶È (2B) - Ö¡Í·ÖĞÎª0 */
+  /* æ•°æ®é•¿åº¦ (2B) - å¸§å¤´ä¸­ä¸º0 */
   header[10] = 0x00;
   header[11] = 0x00;
-  /* ½áÊø×Ö (2B) */
+  /* ç»“æŸå­— (2B) */
   header[12] = OV7725_DisplayApp.frame_tail >> 8;
   header[13] = OV7725_DisplayApp.frame_tail & 0xFF;
 
@@ -79,7 +80,7 @@ static uint8_t USB_Send_Frame_Header(uint16_t frame_idx, uint16_t total_packets,
     return HAL_ERROR;
   }
   
-  if (CDC_Transmit_FS(header, OV7725_DisplayApp.frame_header_size) != USBD_OK)
+  if (CDC_Transmit_HS(header, OV7725_DisplayApp.frame_header_size) != USBD_OK)
   {
     CAW_LOG_ERROR("USB sending frame header failed");
     return HAL_ERROR;
@@ -89,38 +90,29 @@ static uint8_t USB_Send_Frame_Header(uint16_t frame_idx, uint16_t total_packets,
 }
 
 /**
- * @brief ·¢ËÍÊı¾İ°ü£¨°üÍ·+Êı¾İ£©
- * @return HAL_OK³É¹¦, HAL_ERRORÊ§°Ü
+ * @brief å‘é€æ•°æ®åŒ…ï¼ˆåŒ…å¤´+æ•°æ®åˆå¹¶å‘é€ï¼Œæé«˜æ•ˆç‡ï¼‰
+ * @param buffer: ç¼“å†²åŒºæŒ‡é’ˆï¼ˆå‰4å­—èŠ‚ç•™ç»™åŒ…å¤´ï¼‰
+ * @param data_len: æ•°æ®é•¿åº¦
+ * @param packet_idx: åŒ…åºå·
+ * @return HAL_OKæˆåŠŸ, HAL_ERRORå¤±è´¥
  */
-static uint8_t USB_Send_Data_Packet(uint8_t *data, uint16_t data_len, uint16_t packet_idx)
+static uint8_t USB_Send_Data_Packet(uint8_t *buffer, uint16_t data_len, uint16_t packet_idx)
 {
-  /* °üÍ·: °üĞòºÅ(2B) + Êı¾İ³¤¶È(2B) = 4×Ö½Ú */
-  uint8_t pkt_header[4];
-  
-  pkt_header[0] = (uint8_t)(packet_idx & 0xFF);
-  pkt_header[1] = (uint8_t)((packet_idx >> 8) & 0xFF);
-  pkt_header[2] = (uint8_t)(data_len & 0xFF);
-  pkt_header[3] = (uint8_t)((data_len >> 8) & 0xFF);
-  
-  if (USB_Wait_Tx_Complete(500) != HAL_OK)
+  /* åœ¨ç¼“å†²åŒºå¼€å¤´å¡«å…¥åŒ…å¤´: åŒ…åºå·(2B) + æ•°æ®é•¿åº¦(2B) = 4å­—èŠ‚ */
+  buffer[0] = (uint8_t)(packet_idx & 0xFF);
+  buffer[1] = (uint8_t)((packet_idx >> 8) & 0xFF);
+  buffer[2] = (uint8_t)(data_len & 0xFF);
+  buffer[3] = (uint8_t)((data_len >> 8) & 0xFF);
+
+  if (USB_Wait_Tx_Complete(100) != HAL_OK)
   {
     return HAL_ERROR;
   }
-  
-  if (CDC_Transmit_FS(pkt_header, 4) != USBD_OK)
+
+  /* åŒ…å¤´å’Œæ•°æ®ä¸€æ¬¡æ€§å‘é€ï¼Œå‡å°‘USBäº‹åŠ¡å¼€é”€ */
+  if (CDC_Transmit_HS(buffer, 4 + data_len) != USBD_OK)
   {
-    CAW_LOG_ERROR("USB sending packet header failed");
-    return HAL_ERROR;
-  }
-  
-  if (USB_Wait_Tx_Complete(500) != HAL_OK)
-  {
-    return HAL_ERROR;
-  }
-  
-  if (CDC_Transmit_FS(data, data_len) != USBD_OK)
-  {
-    CAW_LOG_ERROR("USB sending packet data failed");
+    CAW_LOG_ERROR("USB sending packet failed");
     return HAL_ERROR;
   }
 
@@ -128,9 +120,9 @@ static uint8_t USB_Send_Data_Packet(uint8_t *data, uint16_t data_len, uint16_t p
 }
 
 /**
- * @brief Í¨¹ıUSB CDC·Ö¿é·¢ËÍÒ»Ö¡Í¼ÏñÊı¾İ£¨´ø°üĞòºÅÑéÖ¤£©
- * @note Ê¹ÓÃË«»º³å£ºµ±Ò»¸ö»º³åÇøÕıÔÚUSB·¢ËÍÊ±£¬ÁíÒ»¸ö»º³åÇøÍ¬Ê±¶ÁÈ¡Êı¾İ
- *       Ã¿¸öÊı¾İ°ü´øÓĞ°üĞòºÅ£¬ÉÏÎ»»ú¿ÉÑéÖ¤ÍêÕûĞÔ
+ * @brief é€šè¿‡USB CDCåˆ†å—å‘é€ä¸€å¸§å›¾åƒæ•°æ®ï¼ˆå¸¦åŒ…åºå·éªŒè¯ï¼‰
+ * @note ä½¿ç”¨åŒç¼“å†²ï¼šå½“ä¸€ä¸ªç¼“å†²åŒºæ­£åœ¨USBå‘é€æ—¶ï¼Œå¦ä¸€ä¸ªç¼“å†²åŒºåŒæ—¶è¯»å–æ•°æ®
+ *       æ¯ä¸ªæ•°æ®åŒ…å¸¦æœ‰åŒ…åºå·ï¼Œä¸Šä½æœºå¯éªŒè¯å®Œæ•´æ€§
  */
 static void OV7725_Send_Frame_USB(void)
 {
@@ -144,15 +136,15 @@ static void OV7725_Send_Frame_USB(void)
   uint8_t send_idx = 0;
   uint8_t send_ok = 1;
 
-  /* Ö»ÓĞÔÚ CAPTURE_DONE ×´Ì¬²ÅÄÜ¿ªÊ¼·¢ËÍ */
+  /* åªæœ‰åœ¨ CAPTURE_DONE çŠ¶æ€æ‰èƒ½å¼€å§‹å‘é€ */
   if (capture_state != CAPTURE_DONE) return;
   
-  /* ¼ì²éUSBÊÇ·ñÒÑÁ¬½Ó */
+  /* æ£€æŸ¥USBæ˜¯å¦å·²è¿æ¥ */
   if (ov7725_Frame_Read_Start() != OV7725_OK) return;
   
   CAW_LOG_INFO("Frame %d sending, %d packets, USB connected", OV7725_DisplayApp.frame_count, total_packets);
 
-  /* ·¢ËÍÖ¡Í·£¨°üº¬×Ü°üÊıºÍÃ¿°ü´óĞ¡£© */
+  /* å‘é€å¸§å¤´ï¼ˆåŒ…å«æ€»åŒ…æ•°å’Œæ¯åŒ…å¤§å°ï¼‰ */
   if (USB_Send_Frame_Header(OV7725_DisplayApp.frame_count, total_packets, bytes_per_chunk) != HAL_OK)
   {
     ov7725_Frame_Read_End();
@@ -160,10 +152,10 @@ static void OV7725_Send_Frame_USB(void)
     return;
   }
 
-  /* Ô¤Ìî³äµÚÒ»¸ö»º³åÇø */
+  /* é¢„è¯»ç¬¬ä¸€å—æ•°æ®ï¼ˆåç§»4å­—èŠ‚ï¼Œç•™å‡ºåŒ…å¤´ä½ç½®ï¼‰ */
   uint16_t first_chunk_bytes = (total_bytes > bytes_per_chunk) ? bytes_per_chunk : total_bytes;
   uint16_t first_chunk_pixels = first_chunk_bytes / 2;
-  ov7725_Frame_Read_Chunk(usb_tx_buffer[write_idx], first_chunk_pixels);
+  ov7725_Frame_Read_Chunk(&usb_tx_buffer[write_idx][4], first_chunk_pixels);
   bytes_read += first_chunk_bytes;
 
   while (bytes_sent < total_bytes && send_ok)
@@ -172,7 +164,7 @@ static void OV7725_Send_Frame_USB(void)
     write_idx = 1 - write_idx;
     uint16_t current_bytes = (total_bytes - bytes_sent) > bytes_per_chunk ? bytes_per_chunk : (total_bytes - bytes_sent);
 
-    /* ·¢ËÍ´ø°üĞòºÅµÄÊı¾İ°ü */
+    /* å‘é€å¸¦åŒ…åºå·çš„æ•°æ®åŒ… */
     if (USB_Send_Data_Packet(usb_tx_buffer[send_idx], current_bytes, packet_idx) != HAL_OK)
     {
       send_ok = 0;
@@ -180,12 +172,12 @@ static void OV7725_Send_Frame_USB(void)
     }
     packet_idx++;
 
-    /* ÔÚ USB ÕıÔÚ·¢ËÍµÄÍ¬Ê±£¬¶ÁÈ¡ÏÂÒ»¿éÊı¾İµ½ÁíÒ»¸ö»º³åÇø (Òì²½²¢ĞĞ) */
+    /* åœ¨USBå‘é€çš„åŒæ—¶ï¼Œè¯»å–ä¸‹ä¸€å—æ•°æ®åˆ°å¦ä¸€ä¸ªç¼“å†²åŒºï¼ˆå¼‚æ­¥æµæ°´çº¿ï¼‰ */
     if (bytes_read < total_bytes)
     {
       uint16_t next_bytes = (total_bytes - bytes_read) > bytes_per_chunk ? bytes_per_chunk : (total_bytes - bytes_read);
       uint16_t next_pixels = next_bytes / 2;
-      ov7725_Frame_Read_Chunk(usb_tx_buffer[write_idx], next_pixels);
+      ov7725_Frame_Read_Chunk(&usb_tx_buffer[write_idx][4], next_pixels);
       bytes_read += next_bytes;
     }
     bytes_sent += current_bytes;
@@ -200,9 +192,9 @@ static void OV7725_Send_Frame_USB(void)
 }
 
 /**
- * @brief ´¦ÀíÒ»Ö¡Í¼ÏñµÄ¶ÁÈ¡Óë USB ´«Êä
- * @note OV7725_Send_Frame_USB ÄÚ²¿ÒÑµ÷ÓÃ ov7725_Frame_Read_End()
- *       ·¢ËÍÍê³Éºó×´Ì¬ÖØÖÃÎª IDLE£¬ÔÊĞí VSYNC ´¥·¢ĞÂ²É¼¯
+ * @brief å¤„ç†ä¸€å¸§å›¾åƒçš„è¯»å–ä¸ USB ä¼ è¾“
+ * @note OV7725_Send_Frame_USB å†…éƒ¨å·²è°ƒç”¨ ov7725_Frame_Read_End()
+ *       å‘é€å®ŒæˆåçŠ¶æ€é‡ç½®ä¸º IDLEï¼Œå…è®¸ VSYNC è§¦å‘æ–°é‡‡é›†
  */
 void OV7725_Process_Image(void)
 {
@@ -214,7 +206,7 @@ void OV7725_Process_Image(void)
 }
 
 /**
- * @brief OV7725 ³õÊ¼»¯ÓëÅäÖÃ
+ * @brief OV7725 åˆå§‹åŒ–ä¸é…ç½®
  */
 uint8_t OV7725_Setup_Config(void)
 {
@@ -224,7 +216,7 @@ uint8_t OV7725_Setup_Config(void)
     return OV7725_ERROR;
   }
     
-  /* ÅäÖÃÎª QVGA (320x240) RGB565 ¸ñÊ½ */
+  /* é…ç½®ä¸º QVGA (320x240) RGB565 æ ¼å¼ */
   if (ov7725_Config(OV7725_QVGA_WIDTH_MAX, OV7725_QVGA_HEIGHT_MAX,
                     OV7725_OUTPUT_MODE_QVGA,
                     OV7725_LIGHT_MODE_AUTO,

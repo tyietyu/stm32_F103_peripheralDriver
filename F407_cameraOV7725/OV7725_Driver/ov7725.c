@@ -482,10 +482,11 @@ uint8_t ov7725_Init(void)
  * @brief 获取OV7725 D0-D7一字节数据
  * @param 无
  * @return uint8_t 读取到的数据
+ * @note D0-D7连接在PE8-PE15，需要读取IDR高8位
  */
 static inline uint8_t ov7725_get_byte_data(void)
 {
-    return (uint8_t)(D0_GPIO_Port->IDR & 0x00FF);
+    return (uint8_t)((D0_GPIO_Port->IDR & 0xFF00) >> 8);
 }
 
 /**
