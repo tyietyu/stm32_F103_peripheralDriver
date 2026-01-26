@@ -251,11 +251,11 @@ class OV7725ViewerGUI:
     
     def find_frame_header(self):
         """Search for frame header in serial stream
-        Header format (14 bytes): 
-            [0xAA, 0x55, frame_idx_L, frame_idx_H, 
+        Header format (14 bytes):
+            [0xAA, 0x55, frame_idx_L, frame_idx_H,
              total_packets_L, total_packets_H, packet_size_L, packet_size_H,
-             pkt_idx_L, pkt_idx_H, data_len_L, data_len_H, 0xA5, 0x5A]
-        Returns: (frame_idx, total_packets, packet_size) or None if not found
+             width_L, width_H, height_L, height_H, 0xA5, 0x5A]
+        Returns: (frame_idx, total_packets, packet_size, width, height) or None if not found
         """
         max_bytes_to_search = 4096  # 最多搜索4KB数据
         bytes_searched = 0
@@ -308,10 +308,10 @@ class OV7725ViewerGUI:
                             frame_idx = struct.unpack('<H', header_rest[0:2])[0]
                             total_packets = struct.unpack('<H', header_rest[2:4])[0]
                             packet_size = struct.unpack('<H', header_rest[4:6])[0]
-                            # header_rest[6:8] = pkt_idx (0 in frame header)
-                            # header_rest[8:10] = data_len (0 in frame header)
-                            print(f"[RX] Valid header: frame={frame_idx}, packets={total_packets}, size={packet_size}")
-                            return (frame_idx, total_packets, packet_size)
+                            width = struct.unpack('<H', header_rest[6:8])[0]
+                            height = struct.unpack('<H', header_rest[8:10])[0]
+                            print(f"[RX] Valid header: frame={frame_idx}, packets={total_packets}, size={packet_size}, resolution={width}x{height}")
+                            return (frame_idx, total_packets, packet_size, width, height)
                         else:
                             print(f"[RX] Invalid end markers: {header_rest[10]:02X} {header_rest[11]:02X}")
         
@@ -399,9 +399,19 @@ class OV7725ViewerGUI:
                     continue
                 
                 print(f"[RX] Frame header found!")
-                
-                frame_idx, total_packets, packet_size = header_info
+
+                frame_idx, total_packets, packet_size, width, height = header_info
                 self.stm32_frame_idx = frame_idx
+
+                # 动态更新分辨率（如果摄像头分辨率变化）
+                if width != self.image_width or height != self.image_height:
+                    print(f"[RX] Resolution changed: {self.image_width}x{self.image_height} -> {width}x{height}")
+                    self.image_width = width
+                    self.image_height = height
+                    self.frame_size = width * height * BYTES_PER_PIXEL
+                    self.frame_buffer = bytearray(self.frame_size)
+                    # 更新UI显示分辨率
+                    self.root.after(0, lambda w=width, h=height: self.resolution_label.config(text=f"Resolution: {w}x{h}"))
                 
                 # Receive all packets with validation
                 received = 0

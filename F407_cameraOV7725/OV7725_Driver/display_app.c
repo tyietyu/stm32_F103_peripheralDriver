@@ -46,13 +46,13 @@ static uint8_t USB_Wait_Tx_Complete(uint32_t timeout_ms)
 
 /**
  * @brief 发送帧头 (14字节)
- * @note 帧头格式: 同步字(2) + 帧号(2) + 总包数(2) + 每包大小(2) + 包序号(2) + 数据长度(2) + 结束字(2)
+ * @note 帧头格式: 同步字(2) + 帧号(2) + 总包数(2) + 每包大小(2) + 宽度(2) + 高度(2) + 结束字(2)
  * @return HAL_OK成功, HAL_ERROR失败
  */
 static uint8_t USB_Send_Frame_Header(uint16_t frame_idx, uint16_t total_packets, uint16_t packet_size)
 {
   uint8_t header[FRAME_HEADER_SIZE];
-  
+
   /* 同步字 (2B) */
   header[0] = OV7725_DisplayApp.frame_head >> 8;
   header[1] = OV7725_DisplayApp.frame_head & 0xFF;
@@ -65,12 +65,12 @@ static uint8_t USB_Send_Frame_Header(uint16_t frame_idx, uint16_t total_packets,
   /* 每包大小 (2B) */
   header[6] = (uint8_t)(packet_size & 0xFF);
   header[7] = (uint8_t)((packet_size >> 8) & 0xFF);
-  /* 包序号 (2B) - 帧头中为0 */
-  header[8] = 0x00;
-  header[9] = 0x00;
-  /* 数据长度 (2B) - 帧头中为0 */
-  header[10] = 0x00;
-  header[11] = 0x00;
+  /* 图像宽度 (2B) */
+  header[8] = (uint8_t)(OV7725_Camera.image_width & 0xFF);
+  header[9] = (uint8_t)((OV7725_Camera.image_width >> 8) & 0xFF);
+  /* 图像高度 (2B) */
+  header[10] = (uint8_t)(OV7725_Camera.image_height & 0xFF);
+  header[11] = (uint8_t)((OV7725_Camera.image_height >> 8) & 0xFF);
   /* 结束字 (2B) */
   header[12] = OV7725_DisplayApp.frame_tail >> 8;
   header[13] = OV7725_DisplayApp.frame_tail & 0xFF;
