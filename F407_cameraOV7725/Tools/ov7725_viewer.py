@@ -321,7 +321,6 @@ class OV7725ViewerGUI:
     
     def receive_data_packet(self, expected_idx, expected_size):
         """Receive a single data packet with header validation
-        STM32发送格式：先发送包头(4字节)，再发送数据（分两次CDC_Transmit_FS调用）
         Packet header: [packet_idx_L, packet_idx_H, data_len_L, data_len_H]
         Then data follows separately
         Returns: (data, actual_idx) or (None, -1) on error
@@ -359,7 +358,7 @@ class OV7725ViewerGUI:
         # Read packet data (sent separately by STM32 via second CDC_Transmit_FS call)
         data = b''
         remaining = data_len
-        read_timeout = 2.0
+        read_timeout = 0.5
         start_time = time.time()
         
         while remaining > 0 and (time.time() - start_time) < read_timeout:
