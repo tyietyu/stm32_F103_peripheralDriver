@@ -19,6 +19,31 @@ OV7725_DisplayApp_Handle_t OV7725_DisplayApp = {
     .frame_count = 0,
 };
 
+/* 帧率控制: 每N帧发送一次，降低USB负载 */
+#define FRAME_SKIP_COUNT  20
+static uint16_t frame_skip_counter = 0;
+
+/**
+ * @brief 检查USB CDC是否已连接并准备好发送
+ * @return 1=已连接, 0=未连接
+ */
+static uint8_t USB_CDC_Is_Connected(void)
+{
+  /* 检查USB设备是否已配置 */
+  if (hUsbDeviceHS.dev_state != USBD_STATE_CONFIGURED)
+  {
+    return 0;
+  }
+
+  /* 检查CDC句柄是否有效 */
+  if (hUsbDeviceHS.pClassData == NULL)
+  {
+    return 0;
+  }
+
+  return 1;
+}
+
 /**
  * @brief 等待 USB CDC 发送缓冲区空闲
  */
@@ -26,10 +51,9 @@ static uint8_t USB_Wait_Tx_Complete(uint32_t timeout_ms)
 {
   uint32_t start_time = HAL_GetTick();
   USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceHS.pClassData;
-  
+
   if (hcdc == NULL)
   {
-    CAW_LOG_ERROR("USB CDC Handle is NULL");
     return HAL_ERROR;
   }
 
@@ -37,7 +61,9 @@ static uint8_t USB_Wait_Tx_Complete(uint32_t timeout_ms)
   {
     if (HAL_GetTick() - start_time > timeout_ms)
     {
-      CAW_LOG_ERROR("USB Tx Data Timeout");
+      /* 超时后强制重置TxState，防止卡死 */
+      hcdc->TxState = 0;
+      CAW_LOG_WARN("USB Tx Timeout, TxState reset");
       return HAL_ERROR;
     }
   }
@@ -75,7 +101,7 @@ static uint8_t USB_Send_Frame_Header(uint16_t frame_idx, uint16_t total_packets,
   header[12] = OV7725_DisplayApp.frame_tail >> 8;
   header[13] = OV7725_DisplayApp.frame_tail & 0xFF;
 
-  if (USB_Wait_Tx_Complete(50) != HAL_OK)
+  if (USB_Wait_Tx_Complete(1000) != HAL_OK)
   {
     return HAL_ERROR;
   }
@@ -104,7 +130,7 @@ static uint8_t USB_Send_Data_Packet(uint8_t *buffer, uint16_t data_len, uint16_t
   buffer[2] = (uint8_t)(data_len & 0xFF);
   buffer[3] = (uint8_t)((data_len >> 8) & 0xFF);
 
-  if (USB_Wait_Tx_Complete(100) != HAL_OK)
+  if (USB_Wait_Tx_Complete(1000) != HAL_OK)
   {
     return HAL_ERROR;
   }
@@ -138,11 +164,13 @@ static void OV7725_Send_Frame_USB(void)
 
   /* 只有在 CAPTURE_DONE 状态才能开始发送 */
   if (capture_state != CAPTURE_DONE) return;
-  
+
   /* 检查USB是否已连接 */
+  if (!USB_CDC_Is_Connected()) return;
+
   if (ov7725_Frame_Read_Start() != OV7725_OK) return;
-  
-  CAW_LOG_INFO("Frame %d sending, %d packets, USB connected", OV7725_DisplayApp.frame_count, total_packets);
+
+  CAW_LOG_INFO("Frame %d sending, %d packets", OV7725_DisplayApp.frame_count, total_packets);
 
   /* 发送帧头（包含总包数和每包大小） */
   if (USB_Send_Frame_Header(OV7725_DisplayApp.frame_count, total_packets, bytes_per_chunk) != HAL_OK)
@@ -151,7 +179,6 @@ static void OV7725_Send_Frame_USB(void)
     CAW_LOG_ERROR("USB sending frame header failed");
     return;
   }
-
   /* 预读第一块数据（偏移4字节，留出包头位置） */
   uint16_t first_chunk_bytes = (total_bytes > bytes_per_chunk) ? bytes_per_chunk : total_bytes;
   uint16_t first_chunk_pixels = first_chunk_bytes / 2;
@@ -195,13 +222,25 @@ static void OV7725_Send_Frame_USB(void)
  * @brief 处理一帧图像的读取与 USB 传输
  * @note OV7725_Send_Frame_USB 内部已调用 ov7725_Frame_Read_End()
  *       发送完成后状态重置为 IDLE，允许 VSYNC 触发新采集
+ *       每 FRAME_SKIP_COUNT 帧发送一次，降低USB负载
  */
 void OV7725_Process_Image(void)
 {
   if (ov7725_Frame_Available())
   {
-    OV7725_Send_Frame_USB();
-    CAW_LOG_DEBUG("Frame send ok, capturing next image...");
+    frame_skip_counter++;
+
+    if (frame_skip_counter >= FRAME_SKIP_COUNT)
+    {
+      frame_skip_counter = 0;
+      OV7725_Send_Frame_USB();
+      CAW_LOG_DEBUG("Frame send ok, capturing next image...");
+    }
+    else
+    {
+      /* 跳过此帧，仅重置状态允许下一帧采集 */
+      ov7725_Frame_Read_End();
+    }
   }
 }
 

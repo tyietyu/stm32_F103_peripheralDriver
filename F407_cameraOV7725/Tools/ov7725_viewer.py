@@ -46,7 +46,7 @@ class OV7725ViewerGUI:
         self.root.title("OV7725 USB Camera Viewer")
         self.root.geometry("800x600")
         self.root.resizable(True, True)
-        
+
         self.serial = None
         self.running = False
         self.image_width = DEFAULT_WIDTH
@@ -60,7 +60,10 @@ class OV7725ViewerGUI:
         self.fps_count = 0
         self.receive_thread = None
         self.sync_errors = 0
-        
+
+        # 接收缓冲区（用于批量读取和搜索）
+        self.rx_buffer = bytearray()
+
         self.setup_ui()
         self.refresh_ports()
         
@@ -178,6 +181,14 @@ class OV7725ViewerGUI:
                 xonxoff=False
             )
             print(f"[CONNECT] Serial port opened successfully!")
+
+            # 增大串口接收缓冲区（USB HS模式数据量大，需要更大缓冲区）
+            try:
+                # 设置接收缓冲区为4MB，发送缓冲区为64KB
+                self.serial.set_buffer_size(rx_size=4*1024*1024, tx_size=64*1024)
+                print(f"[CONNECT] Buffer size set: RX=4MB, TX=64KB")
+            except Exception as e:
+                print(f"[CONNECT] Failed to set buffer size: {e}")
             print(f"[CONNECT] Port: {self.serial.port}, Baudrate: {self.serial.baudrate}")
             print(f"[CONNECT] Is open: {self.serial.is_open}")
             
@@ -237,239 +248,200 @@ class OV7725ViewerGUI:
         """Convert RGB565 data to RGB888 image
         Note: STM32 sends data in Big-Endian (high byte first, low byte second)
         """
-        # Use big-endian format '>u2' to match STM32 byte order
-        rgb565 = np.frombuffer(data, dtype='>u2')
+        # 尝试 Little-Endian，因为 USB CDC 可能会影响字节序
+        rgb565 = np.frombuffer(data, dtype='<u2')
         rgb565 = rgb565.reshape((self.image_height, self.image_width))
-        
+
         # RGB565 format: RRRRR GGGGGG BBBBB (5-6-5 bits)
         r = ((rgb565 >> 11) & 0x1F) << 3  # 5-bit red -> 8-bit
         g = ((rgb565 >> 5) & 0x3F) << 2   # 6-bit green -> 8-bit
         b = (rgb565 & 0x1F) << 3          # 5-bit blue -> 8-bit
-        
+
         rgb888 = np.stack([r, g, b], axis=-1).astype(np.uint8)
         return rgb888
     
+    def buffer_read(self, min_bytes, timeout=2.0):
+        """从串口批量读取数据到缓冲区，直到缓冲区有足够字节或超时"""
+        start_time = time.time()
+        while len(self.rx_buffer) < min_bytes and (time.time() - start_time) < timeout:
+            try:
+                available = self.serial.in_waiting
+                if available > 0:
+                    # 一次性读取所有可用数据
+                    chunk = self.serial.read(available)
+                    if chunk:
+                        self.rx_buffer.extend(chunk)
+                else:
+                    time.sleep(0.0005)  # 更短的等待时间，提高响应速度
+            except Exception:
+                time.sleep(0.001)
+        return len(self.rx_buffer) >= min_bytes
+
+    def buffer_consume(self, n):
+        """从缓冲区消费n个字节"""
+        data = bytes(self.rx_buffer[:n])
+        del self.rx_buffer[:n]
+        return data
+
     def find_frame_header(self):
-        """Search for frame header in serial stream
+        """Search for frame header in serial stream (批量读取版本)
         Header format (14 bytes):
             [0xAA, 0x55, frame_idx_L, frame_idx_H,
              total_packets_L, total_packets_H, packet_size_L, packet_size_H,
              width_L, width_H, height_L, height_H, 0xA5, 0x5A]
         Returns: (frame_idx, total_packets, packet_size, width, height) or None if not found
         """
-        max_bytes_to_search = 4096  # 最多搜索4KB数据
-        bytes_searched = 0
-        no_data_count = 0
-        max_no_data = 100  # 最多等待100次（约5秒）
-        raw_bytes = []  # 用于调试打印
-        
-        while self.running and bytes_searched < max_bytes_to_search:
-            # 尝试读取一个字节（使用超时）
+        max_search_time = 5.0
+        start_time = time.time()
+
+        while self.running and (time.time() - start_time) < max_search_time:
+            # 批量读取数据到缓冲区
             try:
-                byte1 = self.serial.read(1)
-            except Exception as e:
-                time.sleep(0.01)
-                continue
-                
-            if len(byte1) == 0:
-                no_data_count += 1
-                if no_data_count >= max_no_data:
-                    if raw_bytes:
-                        print(f"[RX] Received {len(raw_bytes)} bytes before timeout: {' '.join(f'{b:02X}' for b in raw_bytes[:50])}...")
-                    return None  # 超时，没有数据
-                continue
-            
-            no_data_count = 0  # 重置计数器
-            bytes_searched += 1
-            raw_bytes.append(byte1[0])
-            
-            # 每收到100字节打印一次
-            if len(raw_bytes) % 100 == 0:
-                print(f"[RX] Received {len(raw_bytes)} bytes so far...")
-                
-            if byte1[0] == FRAME_HEADER_SYNC1:
-                byte2 = self.serial.read(1)
-                if len(byte2) == 0:
-                    continue
-                bytes_searched += 1
-                raw_bytes.append(byte2[0])
-                    
-                if byte2[0] == FRAME_HEADER_SYNC2:
-                    print(f"[RX] Found sync bytes 0xAA 0x55!")
-                    # Found sync, read rest of header (14 - 2 = 12 bytes)
-                    header_rest = self.serial.read(FRAME_HEADER_SIZE - 2)
-                    if len(header_rest) == FRAME_HEADER_SIZE - 2:
-                        bytes_searched += len(header_rest)
-                        raw_bytes.extend(header_rest)
-                        print(f"[RX] Header: {' '.join(f'{b:02X}' for b in raw_bytes[-14:])}")
-                        # Verify end markers (at positions 10 and 11 in header_rest, i.e., bytes 12-13 of full header)
-                        if header_rest[10] == FRAME_HEADER_END1 and header_rest[11] == FRAME_HEADER_END2:
-                            # Parse header
-                            frame_idx = struct.unpack('<H', header_rest[0:2])[0]
-                            total_packets = struct.unpack('<H', header_rest[2:4])[0]
-                            packet_size = struct.unpack('<H', header_rest[4:6])[0]
-                            width = struct.unpack('<H', header_rest[6:8])[0]
-                            height = struct.unpack('<H', header_rest[8:10])[0]
-                            print(f"[RX] Valid header: frame={frame_idx}, packets={total_packets}, size={packet_size}, resolution={width}x{height}")
+                available = self.serial.in_waiting
+                if available > 0:
+                    chunk = self.serial.read(available)
+                    if chunk:
+                        self.rx_buffer.extend(chunk)
+            except Exception:
+                pass
+
+            # 在缓冲区中搜索帧头
+            if len(self.rx_buffer) >= FRAME_HEADER_SIZE:
+                idx = 0
+                while idx <= len(self.rx_buffer) - FRAME_HEADER_SIZE:
+                    if self.rx_buffer[idx] == FRAME_HEADER_SYNC1 and self.rx_buffer[idx + 1] == FRAME_HEADER_SYNC2:
+                        if self.rx_buffer[idx + 12] == FRAME_HEADER_END1 and self.rx_buffer[idx + 13] == FRAME_HEADER_END2:
+                            header = bytes(self.rx_buffer[idx:idx + FRAME_HEADER_SIZE])
+
+                            if idx > 0:
+                                del self.rx_buffer[:idx]
+
+                            del self.rx_buffer[:FRAME_HEADER_SIZE]
+
+                            frame_idx = struct.unpack('<H', header[2:4])[0]
+                            total_packets = struct.unpack('<H', header[4:6])[0]
+                            packet_size = struct.unpack('<H', header[6:8])[0]
+                            width = struct.unpack('<H', header[8:10])[0]
+                            height = struct.unpack('<H', header[10:12])[0]
                             return (frame_idx, total_packets, packet_size, width, height)
-                        else:
-                            print(f"[RX] Invalid end markers: {header_rest[10]:02X} {header_rest[11]:02X}")
-        
-        if raw_bytes:
-            print(f"[RX] Searched {bytes_searched} bytes, first 50: {' '.join(f'{b:02X}' for b in raw_bytes[:50])}")
+                    idx += 1
+
+                # 没找到，丢弃已搜索的数据（保留最后13字节以防帧头跨块）
+                if len(self.rx_buffer) > FRAME_HEADER_SIZE - 1:
+                    discard = len(self.rx_buffer) - (FRAME_HEADER_SIZE - 1)
+                    del self.rx_buffer[:discard]
+
+            time.sleep(0.001)
+
         return None
-    
+
     def receive_data_packet(self, expected_idx, expected_size):
-        """Receive a single data packet with header validation
+        """Receive a single data packet with header validation (批量读取版本)
         Packet header: [packet_idx_L, packet_idx_H, data_len_L, data_len_H]
-        Then data follows separately
         Returns: (data, actual_idx) or (None, -1) on error
         """
-        # Read packet header (4 bytes) with retry
-        pkt_header = b''
-        header_timeout = 1.0
-        header_start = time.time()
-        
-        while len(pkt_header) < PACKET_HEADER_SIZE and (time.time() - header_start) < header_timeout:
-            remaining = PACKET_HEADER_SIZE - len(pkt_header)
-            chunk = self.serial.read(remaining)
-            if chunk:
-                pkt_header += chunk
-            else:
-                time.sleep(0.001)
-        
-        if len(pkt_header) != PACKET_HEADER_SIZE:
-            print(f"[RX] Packet header read failed, got {len(pkt_header)} bytes")
+        # 先预读包头，缩短超时避免卡住
+        if not self.buffer_read(PACKET_HEADER_SIZE, timeout=0.5):
             return (None, -1)
-        
+
+        pkt_header = bytes(self.rx_buffer[:PACKET_HEADER_SIZE])
         packet_idx = struct.unpack('<H', pkt_header[0:2])[0]
         data_len = struct.unpack('<H', pkt_header[2:4])[0]
-        
+
         # Validate packet index
         if packet_idx != expected_idx:
-            print(f"[RX] Packet index mismatch: expected {expected_idx}, got {packet_idx}")
+            # 包序号不对，消费这4字节避免卡住，让外层重新搜索帧头
+            self.buffer_consume(PACKET_HEADER_SIZE)
             return (None, packet_idx)
-        
-        # Validate data length
+
+        # Validate data length - 检查是否合理
         if data_len > expected_size or data_len == 0:
-            print(f"[RX] Invalid data length: {data_len}, expected max {expected_size}")
+            # 数据长度不合理，消费包头避免卡住
+            self.buffer_consume(PACKET_HEADER_SIZE)
             return (None, -1)
-        
-        # Read packet data (sent separately by STM32 via second CDC_Transmit_FS call)
-        data = b''
-        remaining = data_len
-        read_timeout = 0.5
-        start_time = time.time()
-        
-        while remaining > 0 and (time.time() - start_time) < read_timeout:
-            chunk = self.serial.read(min(remaining, 2048))
-            if len(chunk) > 0:
-                data += chunk
-                remaining -= len(chunk)
-            else:
-                time.sleep(0.001)
-        
-        if len(data) != data_len:
-            print(f"[RX] Packet {packet_idx} data incomplete: got {len(data)}/{data_len} bytes")
+
+        # 验证通过，消费包头
+        self.buffer_consume(PACKET_HEADER_SIZE)
+
+        # 读取数据
+        if not self.buffer_read(data_len, timeout=0.5):
             return (None, -1)
-        
+
+        data = self.buffer_consume(data_len)
         return (data, packet_idx)
         
     def receive_loop(self):
         """Background thread for receiving image data with packet validation"""
         print("[RX] Receive thread started, waiting for data...")
-        bytes_received_total = 0
-        
+
         while self.running:
             try:
-                # 打印接收缓冲区状态
-                try:
-                    waiting = self.serial.in_waiting
-                    if waiting > 0:
-                        print(f"[RX] Buffer has {waiting} bytes waiting")
-                except:
-                    pass
-                
                 # Search for frame header
                 header_info = self.find_frame_header()
                 if header_info is None:
-                    if bytes_received_total == 0:
-                        print("[RX] No frame header found, waiting...")
                     self.sync_errors += 1
                     continue
-                
-                print(f"[RX] Frame header found!")
 
                 frame_idx, total_packets, packet_size, width, height = header_info
                 self.stm32_frame_idx = frame_idx
+                print(f"[RX] Frame {frame_idx}: {total_packets} packets, {width}x{height}")
 
                 # 动态更新分辨率（如果摄像头分辨率变化）
                 if width != self.image_width or height != self.image_height:
-                    print(f"[RX] Resolution changed: {self.image_width}x{self.image_height} -> {width}x{height}")
                     self.image_width = width
                     self.image_height = height
                     self.frame_size = width * height * BYTES_PER_PIXEL
                     self.frame_buffer = bytearray(self.frame_size)
-                    # 更新UI显示分辨率
                     self.root.after(0, lambda w=width, h=height: self.resolution_label.config(text=f"Resolution: {w}x{h}"))
-                
+
                 # Receive all packets with validation
                 received = 0
                 frame_valid = True
-                start_time = time.time()
-                timeout = 5.0
-                
+
                 for pkt_idx in range(total_packets):
-                    if time.time() - start_time > timeout:
-                        print(f"Frame {frame_idx}: Timeout at packet {pkt_idx}/{total_packets}")
-                        self.sync_errors += 1
-                        frame_valid = False
-                        break
-                    
                     # Receive packet with index validation
                     data, actual_idx = self.receive_data_packet(pkt_idx, packet_size)
-                    
+
                     if data is None:
-                        if actual_idx == -1:
-                            print(f"Frame {frame_idx}: Packet {pkt_idx} read error")
-                        else:
-                            print(f"Frame {frame_idx}: Packet index mismatch (expected {pkt_idx}, got {actual_idx})")
                         self.sync_errors += 1
                         frame_valid = False
                         break
-                    
+
                     # Copy data to frame buffer
                     data_len = len(data)
                     if received + data_len <= self.frame_size:
                         self.frame_buffer[received:received + data_len] = data
                         received += data_len
                     else:
-                        print(f"Frame {frame_idx}: Buffer overflow at packet {pkt_idx}")
                         frame_valid = False
                         break
-                
+
+                # 如果帧无效，清空缓冲区重新同步
+                if not frame_valid:
+                    self.rx_buffer.clear()
+                    print(f"[RX] Frame {frame_idx} invalid, buffer cleared, re-syncing...")
+                    continue
+
                 # Check if frame is complete and valid
-                if frame_valid and received == self.frame_size:
+                if received == self.frame_size:
                     self.frame_count += 1
                     self.fps_count += 1
-                    
+
                     # Calculate FPS
                     current_time = time.time()
                     if current_time - self.last_fps_time >= 1.0:
                         self.fps = self.fps_count
                         self.fps_count = 0
                         self.last_fps_time = current_time
-                    
+
                     # Convert and display
                     image = self.rgb565_to_rgb888(bytes(self.frame_buffer))
                     self.current_image = image
-                    
+
                     # Update UI in main thread
-                    self.root.after(0, lambda: self.update_display(image))
-                elif frame_valid and received != self.frame_size:
-                    print(f"Frame {frame_idx}: Incomplete data ({received}/{self.frame_size} bytes)")
-                    self.sync_errors += 1
-                    
+                    self.root.after(0, lambda img=image: self.update_display(img))
+                    print(f"[RX] Frame {frame_idx} OK, total: {self.frame_count}")
+
             except PermissionError as e:
                 # USB CDC虚拟串口不支持某些Windows串口命令，忽略此错误
                 if self.running and "ClearCommError" not in str(e):
