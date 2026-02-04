@@ -50,9 +50,9 @@
 //#include "msp430_clock.h"
 //#include "msp430_interrupt.h"
 
-#define i2c_write   MPU_Write_Len
-#define i2c_read    MPU_Read_Len
-#define delay_ms    delay_ms
+#define i2c_write   IIC_Write_Len
+#define i2c_read    IIC_Read_Len
+#define delay_ms    HAL_Delay
 #define get_ms      mget_ms
 //static inline int reg_int_cb(struct int_param_s *int_param)
 //{
@@ -2957,7 +2957,6 @@ void mget_ms(unsigned long *time)
 u8 mpu_dmp_init(void)
 {
 	u8 res=0;
-	MPU_Bus_Init();
 
 	if(mpu_init()==0)//≥ı ºªØMPU6050
 	{	

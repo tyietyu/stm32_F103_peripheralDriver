@@ -1,465 +1,270 @@
 #include "mpu6050.h"
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
+#include "inv_mpu_dmp_motion_driver.h"
+#include "inv_mpu.h"
 
-#define MPU_INT_PORT GPIOB
-#define MPU_INT_PIN  GPIO_PIN_12
+uint8_t u8_mpu6050_id = 0;
 
-#define CLK_ENABLE __HAL_RCC_GPIOB_CLK_ENABLE();
-
-iic_bus_t MPU_bus = 
-{
+iic_bus_t MPU_bus = {
 	.IIC_SDA_PORT = GPIOB,
 	.IIC_SCL_PORT = GPIOB,
 	.IIC_SDA_PIN  = GPIO_PIN_13,
 	.IIC_SCL_PIN  = GPIO_PIN_14,
 };
 
-
-/**************************************************************************/
-/*!
-    @brief  initialize the iic port connect with MPU6050
-
-    @param  NULL
-*/
-/**************************************************************************/
-void MPU_INT_Pin_Init()
+static void soft_iic_init(void)
 {
-	GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /*Configure GPIO pin : PB12 */
-  GPIO_InitStruct.Pin = GPIO_PIN_12;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
-}
-
-
-/**************************************************************************/
-/*!
-    @brief  initialize the motion function of MPU6050
-
-    @param  NULL
-*/
-/**************************************************************************/
-void MPU_Motion_Init(void)			
-{
-    MPU_Write_Byte(MPU_MOTION_DET_REG,0x01);    //set the acceleration threshold is (LSB*2)mg
-    MPU_Write_Byte(MPU_MOTION_DUR_REG,0x01);    //Acceleration detection time is ()ms 
-    MPU_Write_Byte(MPU_INTBP_CFG_REG,0X90);     //INT Pin active low level, reset until 50us
-    MPU_Write_Byte(MPU_INT_EN_REG,0x40);       	//enable INT
-}
-
-
-/**************************************************************************/
-/*!
-    @brief  initialize the IIC bus
-
-    @param  NULL
-*/
-/**************************************************************************/
-void MPU_Bus_Init(void)
-{
-	CLK_ENABLE;
+	__HAL_RCC_GPIOB_CLK_ENABLE();
 	IICInit(&MPU_bus);
 }
 
+static uint8_t IIC_Read_Byte(uint8_t reg)
+{
+	uint8_t value = 0;
+	IIC_Read_Len(MPU_ADDR, reg, 1, &value);
+	return value;
+}
 
-/**************************************************************************/
-/*!
-    @brief  init the MPU6050
-
-    @param  NULL
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Init(void)
-{ 
-	u8 res;
-	
-	MPU_Bus_Init();
-	
-	MPU_Write_Byte(MPU_PWR_MGMT1_REG,0X80);	//复位MPU6050
-	delay_ms(100);
-	
-	MPU_Write_Byte(MPU_PWR_MGMT1_REG,0X00);	//唤醒MPU6050 
-	MPU_Set_Gyro_Fsr(3);										//G传感器, 2000dps
-	MPU_Set_Accel_Fsr(2);										//A传感器, 8g
-	MPU_Set_Rate(50);												//采样率50Hz
-	MPU_Write_Byte(MPU_INT_EN_REG,0X00);		//关闭所有中断
-	MPU_Write_Byte(MPU_USER_CTRL_REG,0X00);	//IIC主模式关闭
-	MPU_Write_Byte(MPU_FIFO_EN_REG,0X00);		//dis FIFO
-	MPU_Write_Byte(MPU_INTBP_CFG_REG,0X80);	//INT active low
-	
-	res=MPU_Read_Byte(MPU_DEVICE_ID_REG);
-	if(res==MPU_ADDR)//ID
+uint8_t IIC_Write_Len(uint8_t addr,uint8_t reg, uint8_t len, uint8_t *buf)
+{
+	if(IIC_Write_Multi_Byte(&MPU_bus, addr, reg, len, buf) != HAL_OK)
 	{
-		MPU_Write_Byte(MPU_PWR_MGMT1_REG,0X28);	//SET the internal 8MHz,sleep=0,cycle=1,TEMP_DIS=1//low power modes
-		MPU_Write_Byte(MPU_PWR_MGMT2_REG,0X87);	//enable accelerometer,disanable gyroscope,set the wake up frequence=20Hz
-		MPU_Set_Rate(50);												//采样率50Hz
- 	}else return 1;
-	
-	MPU_Motion_Init();
-	MPU_INT_Pin_Init();
-	
-	
+		return 1;
+	}
 	return 0;
 }
 
-void MPU_Sleep()
+uint8_t IIC_Read_Len(uint8_t addr,uint8_t reg,uint8_t len,uint8_t *buf)
 {
-	MPU_Write_Byte(MPU_PWR_MGMT1_REG,0x48);//sleep=1,cycle=0,temp_dis=1,internal 8MHz
+	if(IIC_Read_Multi_Byte(&MPU_bus, addr, reg, len, buf) != HAL_OK)
+	{
+		return 1;
+	}
+	return 0;
 }
 
-void MPU_Wakeup()
-{
-	//low power modes
-	MPU_Write_Byte(MPU_PWR_MGMT1_REG,0x28);//sleep=0,cycle=1,temp_dis=1,internal 8MHz
-}
-
-uint8_t MPU_Read_Status()
-{
-	return MPU_Read_Byte(MPU_INT_STA_REG);
-}
-
-
-/**************************************************************************/
-/*
-    @brief  设置MPU6050陀螺仪传感器满量程范围
-
-    @param  fsr:0,+250dps;1,500dps;2,+1000dps;3,+2000dps
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Set_Gyro_Fsr(u8 fsr)
-{
-	return MPU_Write_Byte(MPU_GYRO_CFG_REG,fsr<<3); 
-}
-
-
-/**************************************************************************/
-/*
-    @brief  设置MPU6050的数字低通滤波器
-
-    @param  fsr:低通滤波器频率(Hz)
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Set_Accel_Fsr(u8 fsr)
-{
-	return MPU_Write_Byte(MPU_ACCEL_CFG_REG,fsr<<3);
-}
-
-
-/**************************************************************************/
-/*
-    @brief  设置MPU6050的低通滤波器
-
-    @param  lpf: Hz
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Set_LPF(u16 lpf)
-{
-	u8 data=0;
-	if(lpf>=188)data=1;
-	else if(lpf>=98)data=2;
-	else if(lpf>=42)data=3;
-	else if(lpf>=20)data=4;
-	else if(lpf>=10)data=5;
-	else data=6; 
-	return MPU_Write_Byte(MPU_CFG_REG,data);
-}
-
-
-/**************************************************************************/
-/*
-    @brief  设置MPU6050的采样率
-
-    @param  rate: 4~1000 Hz
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Set_Rate(u16 rate)
-{
-	u8 data;
-	if(rate>1000)rate=1000;
-	if(rate<4)rate=4;
-	data=1000/rate-1;
-	data=MPU_Write_Byte(MPU_SAMPLE_RATE_REG,data);
- 	return MPU_Set_LPF(rate/2);
-}
-
-/**************************************************************************/
-/*
-    @brief  获取MPU6050温度值
-
-    @param  NULL
-
-    @return temperature (short)
-*/
-/**************************************************************************/
 short MPU_Get_Temperature(void)
 {
     u8 buf[2]; 
     short raw;
 		float temp;
-		MPU_Read_Len(MPU_ADDR,MPU_TEMP_OUTH_REG,2,buf); 
+		IIC_Read_Len(MPU_ADDR,MPU_TEMP_OUTH_REG,2,buf); 
     raw=((u16)buf[0]<<8)|buf[1];  
     temp=36.53+((double)raw)/340;  
     return temp*100;;
 }
 
-
-/**************************************************************************/
-/*
-    @brief  获取MPU6050陀螺仪原始值
-
-    @param  NULL
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Get_Gyroscope(short *gx,short *gy,short *gz)
+uint8_t MUP6050_Init(void)
 {
-    u8 buf[6],res;  
-		res=MPU_Read_Len(MPU_ADDR,MPU_GYRO_XOUTH_REG,6,buf);
-		if(res==0)
-		{
-			*gx=((u16)buf[0]<<8)|buf[1];  
-			*gy=((u16)buf[2]<<8)|buf[3];  
-			*gz=((u16)buf[4]<<8)|buf[5];
-		} 	
-    return res;;
-}
-
-
-/**************************************************************************/
-/*
-    @brief  获取MPU6050加速度原始值
-
-    @param  NULL
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Get_Accelerometer(short *ax,short *ay,short *az)
-{
-    u8 buf[6],res;  
-		res=MPU_Read_Len(MPU_ADDR,MPU_ACCEL_XOUTH_REG,6,buf);
-		if(res==0)
-		{
-			*ax=((u16)buf[0]<<8)|buf[1];  
-			*ay=((u16)buf[2]<<8)|buf[3];  
-			*az=((u16)buf[4]<<8)|buf[5];
-		} 	
-    return res;;
-}
-
-/**************************************************************************/
-/*
-    @brief  IIC连续写
-
-    @param  addr:器件地址
-    @param  reg:寄存器地址
-	@param  len:写入长度
-	@param  buf:数据区
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Write_Len(u8 addr,u8 reg,u8 len,u8 *buf)
-{
-	u8 i; 
-	IICStart(&MPU_bus); 
-	IICSendByte(&MPU_bus,(addr<<1)|0);
-	if(IICWaitAck(&MPU_bus))	
+	soft_iic_init();
+	u8_mpu6050_id = IIC_Read_Byte(MPU_DEVICE_ID_REG);
+	if(u8_mpu6050_id == MPU_ADDR)
 	{
-		IICStop(&MPU_bus);		 
-		return 1;		
+		return 0;
 	}
-    IICSendByte(&MPU_bus,reg);	
-    IICWaitAck(&MPU_bus);		
-	for(i=0;i<len;i++)
-	{
-		IICSendByte(&MPU_bus,buf[i]);	
-		if(IICWaitAck(&MPU_bus))		
-		{
-			IICStop(&MPU_bus);	 
-			return 1;		 
-		}		
-	}    
-    IICStop(&MPU_bus);	 
-	return 0;	
-} 
-
-/**************************************************************************/
-/*
-    @brief  IIC写单字节
-
-    @param  reg:寄存器地址
-	@param  data:数据(uint8_t)
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Write_Byte(u8 reg,u8 data) 				 
-{ 
-  IICStart(&MPU_bus); 
-	IICSendByte(&MPU_bus, (MPU_ADDR<<1)|0);
-	if(IICWaitAck(&MPU_bus))	
-	{
-		IICStop(&MPU_bus);		 
-		return 1;		
-	}
-	IICSendByte(&MPU_bus,reg);	
-	IICWaitAck(&MPU_bus);		
-	IICSendByte(&MPU_bus,data);
-	if(IICWaitAck(&MPU_bus))	
-	{
-		IICStop(&MPU_bus);	 
-		return 1;		 
-	}		 
-  IICStop(&MPU_bus);	 
-	return 0;
-}
-
-
-/**************************************************************************/
-/*
-    @brief  IIC读单字节
-
-    @param  reg:寄存器地址
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Read_Byte(u8 reg)
-{
-	u8 res;
-  IICStart(&MPU_bus); 
-	IICSendByte(&MPU_bus,(MPU_ADDR<<1)|0);
-	IICWaitAck(&MPU_bus);		
-  IICSendByte(&MPU_bus,reg);	
-  IICWaitAck(&MPU_bus);		
-  IICStart(&MPU_bus);
-	IICSendByte(&MPU_bus,(MPU_ADDR<<1)|1);
-  IICWaitAck(&MPU_bus);		
-	res=IICReceiveByte(&MPU_bus);
-	IICSendNotAck(&MPU_bus);
-  IICStop(&MPU_bus);			
-	return res;		
-}
-
-
-/**************************************************************************/
-/*
-    @brief  IIC连续读
-
-    @param  addr:器件地址
-    @param  reg:寄存器地址
-	@param  len:写入长度
-	@param  buf:数据区
-
-    @return 0 if success
-*/
-/**************************************************************************/
-u8 MPU_Read_Len(u8 addr,u8 reg,u8 len,u8 *buf)
-{ 
- 	IICStart(&MPU_bus); 
-	IICSendByte(&MPU_bus,(addr<<1)|0);
-	if(IICWaitAck(&MPU_bus))	
-	{
-		IICStop(&MPU_bus);		 
-		return 1;		
-	}
-    IICSendByte(&MPU_bus,reg);	
-    IICWaitAck(&MPU_bus);		
-    IICStart(&MPU_bus);
-		IICSendByte(&MPU_bus,(addr<<1)|1);
-    IICWaitAck(&MPU_bus);		
-		while(len)
-		{
-			if(len==1)
-			{
-				*buf=IICReceiveByte(&MPU_bus);
-				IICSendNotAck(&MPU_bus);
-			}
-			else 
-			{
-				*buf=IICReceiveByte(&MPU_bus);	
-				IICSendAck(&MPU_bus);
-			}				
-			len--;
-			buf++; 
-		}    
-    IICStop(&MPU_bus);
-		return 0;	
-}
-
-uint8_t MPU_Write_Multi_Byte(uint8_t addr,uint8_t length,uint8_t buff[])
-{
-	if(IIC_Write_Multi_Byte(&MPU_bus,MPU_ADDR<<1,addr,length,buff))
+	else
 	{
 		return 1;
 	}
-	return 0;
 }
 
-uint8_t MPU_Read_Multi_Byte(uint8_t addr, uint8_t length, uint8_t buff[])
+#define DEFAULT_MPU_HZ  (100)
+struct rx_s {
+	unsigned char header[3];
+	unsigned char cmd;
+};
+struct hal_s {
+	unsigned char sensors;
+	unsigned char dmp_on;
+	unsigned char wait_for_tap;
+	volatile unsigned char new_gyro;
+	unsigned short report;
+	unsigned short dmp_features;
+	unsigned char motion_int_mode;
+	struct rx_s rx;
+};
+static struct hal_s hal = {0};
+
+/* The sensors can be mounted onto the board in any orientation. The mounting
+ * matrix seen below tells the MPL how to rotate the raw data from the
+ * driver(s).
+ * NOTE: Modify the matrices to match the chip-to-body matrix for your set up.
+ */
+static signed char gyro_orientation[9] = {-1, 0, 0,
+                                           0,-1, 0,
+                                           0, 0, 1};
+
+/* Every time new gyro data is available, this function is called in an
+ * ISR context. In this example, it sets a flag protecting the FIFO read
+ * function.
+ */
+static void gyro_data_ready_cb(void)
 {
-	if(IIC_Read_Multi_Byte(&MPU_bus, MPU_ADDR<<1, addr, length, buff))
+	hal.new_gyro = 1;
+}
+
+/* These next two functions converts the orientation matrix (see
+ * gyro_orientation) to a scalar representation for use by the DMP.
+ * NOTE: These functions are borrowed from Invensense's MPL.
+ */
+static inline unsigned short inv_row_2_scale(const signed char *row)
+{
+    unsigned short b;
+
+    if (row[0] > 0)
+        b = 0;
+    else if (row[0] < 0)
+        b = 4;
+    else if (row[1] > 0)
+        b = 1;
+    else if (row[1] < 0)
+        b = 5;
+    else if (row[2] > 0)
+        b = 2;
+    else if (row[2] < 0)
+        b = 6;
+    else
+        b = 7;      // error
+    return b;
+}
+static inline unsigned short inv_orientation_matrix_to_scalar(
+    const signed char *mtx)
+{
+    unsigned short scalar;
+
+    /*
+       XYZ  010_001_000 Identity Matrix
+       XZY  001_010_000
+       YXZ  010_000_001
+       YZX  000_010_001
+       ZXY  001_000_010
+       ZYX  000_001_010
+     */
+
+    scalar = inv_row_2_scale(mtx);
+    scalar |= inv_row_2_scale(mtx + 3) << 3;
+    scalar |= inv_row_2_scale(mtx + 6) << 6;
+
+    return scalar;
+}
+
+static void mpu_run_self_test_local(void)
+{
+    int result;
+    long gyro[3], accel[3];
+
+    result = mpu_run_self_test(gyro, accel);
+    if (result == 0x7) {
+        /* Test passed. We can trust the gyro data here, so let's push it down
+         * to the DMP.
+         */
+        float sens;
+        unsigned short accel_sens;
+        mpu_get_gyro_sens(&sens);
+        gyro[0] = (long)(gyro[0] * sens);
+        gyro[1] = (long)(gyro[1] * sens);
+        gyro[2] = (long)(gyro[2] * sens);
+        dmp_set_gyro_bias(gyro);
+        mpu_get_accel_sens(&accel_sens);
+        accel[0] *= accel_sens;
+        accel[1] *= accel_sens;
+        accel[2] *= accel_sens;
+        dmp_set_accel_bias(accel);
+    }
+}
+
+#define INT_EXIT_LPM0 12
+uint8_t return_value = 0;
+
+uint8_t DMP_Init(void)
+{
+	soft_iic_init();
+
+	struct int_param_s int_param;
+	unsigned short gyro_rate = 0, gyro_fsr = 0;
+	unsigned char accel_fsr = 0;
+
+	/* Set up gyro.
+	 * Every function preceded by mpu_ is a driver function and can be found
+	 * in inv_mpu.h.
+	 */
+	int_param.cb = gyro_data_ready_cb;
+	int_param.pin = 16;
+	int_param.lp_exit = INT_EXIT_LPM0;
+	int_param.active_low = 1;
+
+	int result = mpu_init();
+
+	if(result == 0)     //mpu init
+	{
+		if(!mpu_set_sensors(INV_XYZ_GYRO | INV_XYZ_ACCEL))    // set gyro or/and accel
+			return_value = 1;
+
+		if(!mpu_configure_fifo(INV_XYZ_GYRO | INV_XYZ_ACCEL)) // set fifo
+			return_value = 2;
+
+		if(!mpu_set_sample_rate(DEFAULT_MPU_HZ))              // set sample
+			return_value = 3;
+
+	    mpu_get_sample_rate(&gyro_rate);
+	    mpu_get_gyro_fsr(&gyro_fsr);
+	    mpu_get_accel_fsr(&accel_fsr);
+
+		if(!dmp_load_motion_driver_firmware())       // load dmp 
+			return_value = 4;
+
+		if(!dmp_set_orientation(inv_orientation_matrix_to_scalar(gyro_orientation)))
+			return_value = 5;
+
+		if(!dmp_enable_feature(DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_TAP |
+				DMP_FEATURE_ANDROID_ORIENT | DMP_FEATURE_SEND_RAW_ACCEL | DMP_FEATURE_SEND_CAL_GYRO |
+				DMP_FEATURE_GYRO_CAL))
+				return_value = 6;
+
+		if(!dmp_set_fifo_rate(DEFAULT_MPU_HZ))    	// set sample
+			return_value = 7;
+
+			mpu_run_self_test_local();                // self test
+
+		if(!mpu_set_dmp_state(1))                 	// enable
+			return_value = 8;
+	}
+	return return_value;
+}
+
+#define q30 1073741824.0f
+
+uint8_t Read_DMP(float* Pitch,float* Roll,float* Yaw)
+{
+	short gyro[3], accel[3], sensors;
+	float q0=1.0f,q1=0.0f,q2=0.0f,q3=0.0f;
+	unsigned long sensor_timestamp;
+	unsigned char more;
+	long quat[4];
+
+	int ret = dmp_read_fifo(gyro, accel, quat, &sensor_timestamp, &sensors, &more);
+
+	if(ret)
 	{
 		return 1;
 	}
-	return 0;
+
+	if (sensors & INV_WXYZ_QUAT)
+	{
+		q0=quat[0] / q30;
+		q1=quat[1] / q30;
+		q2=quat[2] / q30;
+		q3=quat[3] / q30;
+		*Pitch = (float)asinf(-2 * q1 * q3 + 2 * q0* q2)* 57.3f;
+		*Roll =  (float)atan2f(2 * q2 * q3 + 2 * q0 * q1, -2 * q1 * q1 - 2 * q2* q2 + 1)* 57.3f; // roll
+		*Yaw =   (float)atan2f(2*(q1*q2 + q0*q3),q0*q0+q1*q1-q2*q2-q3*q3) * 57.3f;
+		return 0;
+	}
+	else
+	{
+		return 2;
+	}
+
 }
-
-
-/**************************************************************************/
-/*
-    @brief  get the roll and pitch
-
-    @param  roll:roll(float)
-    @param  pitch:pitch(float)
-
-    @return NULL
-*/
-/**************************************************************************/
-void MPU_Get_Angles(float * roll,float * pitch)
-{
-	short ax,ay,az;
-	MPU_Get_Accelerometer(&ax,&ay,&az);
-	*pitch = -atanf(ax/sqrtf(ay*ay+az*az));
-	*roll = atanf((float)ay/(float)az);
-}
-
-
-/**************************************************************************/
-/*
-    @brief  check the MPU6050 is horizontal or not
-
-    @param  NULL
-
-    @return 1 if is horizontal
-*/
-/**************************************************************************/
-uint8_t MPU_isHorizontal(void)
-{
-	float roll,pitch;
-	MPU_Get_Angles(&roll,&pitch);
-	if(roll<=0.50 && roll>=-0.50 && pitch<=0.50 && pitch>=-0.50)
-	{return 1;}
-	return 0;
-}
-

@@ -138,8 +138,8 @@ void vApplicationTickHook( void )
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-	MPU_Init();
-	mpu_dmp_init();
+    MUP6050_Init();
+    DMP_Init();
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -199,7 +199,7 @@ void MPU6050Task(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    result = mpu_dmp_get_data(&pitch,&roll,&yaw);
+    result = Read_DMP(&pitch,&roll,&yaw);
     if(result == 0){
     mpu6050_data.pitch = pitch;
     mpu6050_data.roll = roll;

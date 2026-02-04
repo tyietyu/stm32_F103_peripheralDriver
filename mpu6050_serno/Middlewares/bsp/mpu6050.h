@@ -81,75 +81,14 @@
 //如果AD0脚(9脚)接地,IIC地址为0X68(不包含最低位).
 //如果接V3.3,则IIC地址为0X69(不包含最低位).
 #define MPU_ADDR				0X68
-#define MPU_ID					0x68
-
-////因为开发板接GND,所以转为读写地址后,为0XD1和0XD0(如果接GND,则为0XD3和0XD2)  
-//#define MPU_READ    0XD1
-//#define MPU_WRITE   0XD0
-
-void MPU_INT_Pin_Init(void);
-void MPU_Motion_Init(void);
-void MPU_Bus_Init(void);
-u8 MPU_Init(void); 															//初始化MPU6050
-
-u8 MPU_Write_Len(u8 addr,u8 reg,u8 len,u8 *buf);//IIC连续写
-u8 MPU_Read_Len(u8 addr,u8 reg,u8 len,u8 *buf); //IIC连续读 
-u8 MPU_Write_Byte(u8 reg,u8 data);							//IIC写一个字节
-u8 MPU_Read_Byte(u8 reg);												//IIC读一个字节
-
-u8 MPU_Set_Gyro_Fsr(u8 fsr);
-u8 MPU_Set_Accel_Fsr(u8 fsr);
-u8 MPU_Set_LPF(u16 lpf);
-u8 MPU_Set_Rate(u16 rate);
-u8 MPU_Set_Fifo(u8 sens);
-
-uint8_t MPU_Read_Multi_Byte(uint8_t addr, uint8_t length, uint8_t buff[]);
-uint8_t MPU_Write_Multi_Byte(uint8_t addr,uint8_t length,uint8_t buff[]);
-
-void MPU_Sleep(void);
-void MPU_Wakeup(void);
-uint8_t MPU_Read_Status(void);
 
 short MPU_Get_Temperature(void);
-u8 MPU_Get_Gyroscope(short *gx,short *gy,short *gz);
-u8 MPU_Get_Accelerometer(short *ax,short *ay,short *az);
-void MPU_Get_Angles(float * roll,float * pitch);
-uint8_t MPU_isHorizontal(void);
+uint8_t IIC_Write_Len(uint8_t addr,uint8_t reg, uint8_t len, uint8_t *buf);
+uint8_t IIC_Read_Len(uint8_t addr,uint8_t reg,uint8_t len,uint8_t *buf);
+
+uint8_t MUP6050_Init(void);
+uint8_t DMP_Init(void);
+uint8_t Read_DMP(float* Pitch,float* Roll,float* Yaw);
 
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
