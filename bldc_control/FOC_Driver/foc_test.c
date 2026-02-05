@@ -31,18 +31,33 @@ void Foc_TestCloseloopVelocity(FOC_T *hfoc, LOWPASS_FILTER_T *filter,
   FOC_SetTorque(hfoc, PID_Calc(pid, (target_velocity - SensorVel) * 180 / _PI), FOC_CloseloopElectricalAngle(hfoc));
 }
 
-// 测试闭环位置控制和力矩控制
+// 测试闭环位置控制和力矩控制 (旧版单环，保留兼容)
 void Foc_TestCloseloopAngle(FOC_T *hfoc, PID_T *pid, float angle)
 {
   float SensorAngle = hfoc->Sensor_GetAngle();
-  // float Kp = 0.133;
-  // 位置控制
-  PID_Set(pid, 0.1f, 0.0f, 0.0f, 0.0f);
   FOC_SetTorque(hfoc,
-  PID_Calc(pid, (angle - hfoc->dir * SensorAngle) * 180 / _PI),
-  FOC_CloseloopElectricalAngle(hfoc));
-  // 力矩控制
-  // FOC_SetTorque(hfoc, angle, FOC_CloseloopElectricalAngle(hfoc));
+    PID_Calc(pid, (angle - hfoc->dir * SensorAngle) * 180.0f / _PI),
+    FOC_CloseloopElectricalAngle(hfoc));
+}
+
+// 位置环控制 (三环串级架构: 位置环 -> 速度环 -> 电流环)
+// 返回 iq_ref 供电流环使用
+float Foc_PositionLoop(FOC_T *hfoc, PID_T *anglePID, LOWPASS_FILTER_T *velFilter,
+                       PID_T *velPID, float target_angle)
+{
+  // 获取当前位置 (累计角度，单位: rad)
+  float current_angle = hfoc->dir * hfoc->Sensor_GetAngle();
+
+  // 位置环: 位置误差 -> 目标速度 (rad/s)
+  float position_error = target_angle - current_angle;
+  float target_velocity = PID_Calc(anglePID, position_error);
+
+  // 速度环: 速度误差 -> iq_ref (A)
+  float current_velocity = hfoc->dir * hfoc->Sensor_GetVelocity();
+  current_velocity = LOWPASS_FILTER_Calc(velFilter, current_velocity);
+  float velocity_error = target_velocity - current_velocity;
+
+  return PID_Calc(velPID, velocity_error);
 }
 
 float Foc_VelocityLoop(FOC_T *hfoc, LOWPASS_FILTER_T *filter,

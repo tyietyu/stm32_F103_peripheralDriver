@@ -81,9 +81,10 @@ FOC_T foc;
 PID_T velPID;
 PID_T anglePID;
 PID_T pid_id, pid_iq;
-
 LOWPASS_FILTER_T velFilter;
+
 float target_velocity = 20.0f; // TargetSpeed 20 rad/s
+float target_angle = 180.0f;    // TargetAngle 0 rad
 volatile float iq_ref = 0.0f; // QCurrentRef
 /* USER CODE END PV */
 
@@ -95,13 +96,18 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void ADC_Filter_Init(float voltage_tf, float current_tf)
+static void ADC_Filter_Init(float voltage_tf, float current_tf)
 {
   for (int i = 0; i < ADC_CHANNEL_NUM; i++) 
   {
     LOWPASS_FILTER_Init(&voltage_filter[i], voltage_tf);
     LOWPASS_FILTER_Init(&current_filter[i], current_tf);
   }
+}
+
+static void Enable_DRV8301_Driver(uint8_t status)
+{
+  HAL_GPIO_WritePin(EN_GATE_GPIO_Port, EN_GATE_Pin, status ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 /* USER CODE END 0 */
 
@@ -152,22 +158,24 @@ int main(void)
   HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf, ADC_CHANNEL_NUM);
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, PWM_PERIOD / 2);
 
+  Enable_DRV8301_Driver(1); // Enable DRV8301
   CAW_LOG_Init(&huart1, LEVEL_DEBUG, true);
   CAW_LOG_DEBUG("CAW FOC start ...");
 
   /*  FOC init */
-  FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);
-  FOC_SetVoltageLimit(&foc, 24.0f);
+  FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);   // motor 24V  volatge input,1 dir,  11 pole pairs 
+  FOC_SetVoltageLimit(&foc, 24.0f);                             // voltage limit 24V
   FOC_HAL_InitA(&foc);
   
-  PID_Init(&velPID, 0.5f, 0.01f, 0.0f, 1000.0f,foc.voltage_power_supply / 2);
-  PID_Init(&anglePID, 0.5f, 0.01f, 0.0f, 100000.0f, 100);
-  PID_Init(&pid_id, 0.5f, 0.01f, 0.0f, 1000.0f, 12.0f);
-  PID_Init(&pid_iq, 0.5f, 0.01f, 0.0f, 1000.0f, 12.0f);
+  //P I D Ramp Limit 
+  PID_Init(&velPID, 0.5f, 0.01f, 0.0f, 1000.0f, 0.7f);      //0.7A max
+  PID_Init(&anglePID, 5.0f, 0.1f, 0.05f, 500.0f, 40.0f);    //40rad/s max
+  PID_Init(&pid_id, 1.5f, 0.05f, 0.0f, 1000.0f, 8.0f);      //8V max
+  PID_Init(&pid_iq, 1.5f, 0.05f, 0.0f, 1000.0f, 8.0f);      //8V max
 
-  LOWPASS_FILTER_Init(&velFilter, 0.01f);
+  LOWPASS_FILTER_Init(&velFilter, 0.01f);                   //filter time constant 10ms
+  FOC_Current_Offset_Calibration(&hadc1, 200);
   FOC_AlignmentSensor(&foc);
-  HAL_GPIO_WritePin(EN_GATE_GPIO_Port, EN_GATE_Pin, GPIO_PIN_SET);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -181,7 +189,12 @@ int main(void)
     {
       g_bldc_motor_status.flag = 0;
       FOC_SensorUpdate(&foc);
+      // Voltage SpeedLoop iq_ref
       iq_ref = Foc_VelocityLoop(&foc, &velFilter, &velPID, target_velocity);
+      
+      //PositionLoop iq_ref
+      //iq_ref = Foc_PositionLoop(&foc, &anglePID, &velFilter, &velPID,target_angle);
+
     }
 
     if(g_led_status.flag)
@@ -275,17 +288,14 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
-  const float factor = ADC_REF_VOLTAGE / ADC_RESOLUTION;
-
   if (hadc->Instance == ADC1)
   {
     float raw_iu = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
     float raw_iv = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_2);
     float raw_iw = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_3);
 
-    float iu = (raw_iu * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
-    float iv = (raw_iv * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
-    float iw = (raw_iw * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
+    float iu, iv, iw;
+    FOC_Get_Calibrated_Current(raw_iu, raw_iv, raw_iw, &iu, &iv, &iw);
 
     g_monitor_data.I_U = LOWPASS_FILTER_Calc(&current_filter[0], iu);
     g_monitor_data.I_V = LOWPASS_FILTER_Calc(&current_filter[1], iv);
