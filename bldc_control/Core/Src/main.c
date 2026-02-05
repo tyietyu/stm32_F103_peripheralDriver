@@ -67,6 +67,7 @@ LOWPASS_FILTER_T current_filter[ADC_CHANNEL_NUM];
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define DEG_TO_RAD(deg)     ((deg) * 3.14159f / 180.0f)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -84,7 +85,7 @@ PID_T pid_id, pid_iq;
 LOWPASS_FILTER_T velFilter;
 
 float target_velocity = 20.0f;  // TargetSpeed 20 rad/s
-float target_angle = 3.14159f;  // TargetAngle 180 rad
+float target_angle = 180.0f;  // TargetAngle 180°
 volatile float iq_ref = 0.0f; // QCurrentRef
 /* USER CODE END PV */
 
@@ -198,7 +199,7 @@ int main(void)
       __enable_irq();
 
       //PositionLoop iq_ref
-      //float temp_iq = Foc_PositionLoop(&foc, &anglePID, &velFilter, &velPID, target_angle);
+      //float temp_iq = Foc_PositionLoop(&foc, &anglePID, &velFilter, &velPID,DEG_TO_RAD(target_angle));
       //__disable_irq();
       //iq_ref = temp_iq;
       //__enable_irq();
