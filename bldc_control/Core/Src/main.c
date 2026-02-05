@@ -20,6 +20,7 @@
 #include "main.h"
 #include "adc.h"
 #include "dma.h"
+#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -35,6 +36,7 @@
 #include "math.h"
 #include "pid.h"
 #include "as5600.h"
+#include "drv8301.h"  
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -145,6 +147,7 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
@@ -156,6 +159,16 @@ int main(void)
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, PWM_PERIOD / 2);
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf, ADC_CHANNEL_NUM);
+
+  DRV8301_ConfigInit(&hspi2,
+                      DRV8301_CR1_GATE_CURRENT_1_7A,    // 1.7A 栅极驱动电流
+                      DRV8301_CR1_PWM_MODE_6PWM,        // 6-PWM 模式
+                      DRV8301_CR1_OC_MODE_LATCH_SD,     // 过流锁存关断
+                      DRV8301_OC_ADJ_SET_0_250V,        // 0.25V VDS 阈值
+                      DRV8301_CR2_GAIN_10,              // 放大器增益 10V/V
+                      DRV8301_CR2_OCTW_MODE_OT_OC,      // 过温报告模式
+                      DRV8301_CR2_OC_TOFF_CYCLE);       // 过温关断关闭
+
 
   /*  FOC init */
   ADC_Filter_Init(0.01f, 0.005f);
@@ -177,7 +190,7 @@ int main(void)
   HAL_ADCEx_InjectedStart_IT(&hadc1);
 
   CAW_LOG_Init(&huart1, LEVEL_DEBUG, true);
-  CAW_LOG_DEBUG("CAW FOC start ...");
+  CAW_LOG_DEBUG("BLDC Motor ready ...");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -209,6 +222,15 @@ int main(void)
     {
       g_led_status.flag = 0;
       HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+
+      if(DRV8301_HasFault())
+      {
+        char fault_str[64];
+        uint16_t status = DRV8301_ReadStatus1();
+        DRV8301_GetFaultString(status, fault_str, sizeof(fault_str));
+        CAW_LOG_ERROR("DRV8301 Fault: %s", fault_str);
+        DRV8301_ClearFaults();
+      }
     }
 
   }

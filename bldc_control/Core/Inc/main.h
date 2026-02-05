@@ -95,6 +95,8 @@ void Error_Handler(void);
 #define ZERO_V_GPIO_Port GPIOB
 #define LED_Pin GPIO_PIN_2
 #define LED_GPIO_Port GPIOB
+#define SPI2_CS_Pin GPIO_PIN_11
+#define SPI2_CS_GPIO_Port GPIOB
 #define ZERO_W_Pin GPIO_PIN_3
 #define ZERO_W_GPIO_Port GPIOB
 #define AS5600_SCL_Pin GPIO_PIN_6
