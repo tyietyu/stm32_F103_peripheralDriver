@@ -50,12 +50,12 @@ g_Flag_t g_led_status={0};
 g_Flag_t g_bldc_motor_status={0};
 
 typedef struct {
-  volatile float I_U; // U����� (A)
-  volatile float I_V; // V����� (A)
-  volatile float I_W; // W����� (A)
-  volatile float V_U; // U���ѹ (V)
-  volatile float V_V; // V���ѹ (V)
-  volatile float V_W; // W���ѹ (V)
+  volatile float I_U; // U Current(A)
+  volatile float I_V; // V Current(A)
+  volatile float I_W; // W Current(A)
+  volatile float V_U; // U Voltage(V)
+  volatile float V_V; // V Voltage(V)
+  volatile float V_W; // W Voltage(V)
 } Monitor_Data_t;
 Monitor_Data_t g_monitor_data;
 
@@ -83,8 +83,8 @@ PID_T anglePID;
 PID_T pid_id, pid_iq;
 
 LOWPASS_FILTER_T velFilter;
-float target_velocity = 20.0f; // Ŀ���ٶ� 20 rad/s
-volatile float iq_ref = 0.0f; // q������ο�ֵ
+float target_velocity = 20.0f; // TargetSpeed 20 rad/s
+volatile float iq_ref = 0.0f; // QCurrentRef
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -162,8 +162,8 @@ int main(void)
   
   PID_Init(&velPID, 0.5f, 0.01f, 0.0f, 1000.0f,foc.voltage_power_supply / 2);
   PID_Init(&anglePID, 0.5f, 0.01f, 0.0f, 100000.0f, 100);
-  PID_Init(&pid_id, 0.5f, 0.01f, 0.0f, 1000.0f, 12.0f);  // d��PID
-  PID_Init(&pid_iq, 0.5f, 0.01f, 0.0f, 1000.0f, 12.0f);  // q��PID
+  PID_Init(&pid_id, 0.5f, 0.01f, 0.0f, 1000.0f, 12.0f);
+  PID_Init(&pid_iq, 0.5f, 0.01f, 0.0f, 1000.0f, 12.0f);
 
   LOWPASS_FILTER_Init(&velFilter, 0.01f);
   FOC_AlignmentSensor(&foc);
