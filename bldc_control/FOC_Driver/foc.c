@@ -8,9 +8,13 @@
 #include "foc.h"
 #include <string.h>
 #include <math.h>
+#include "pid.h"
 
 #define _3PI_2 4.71238898038469f
 #define _PI 3.141592653589793f
+#define _SQRT3 1.732050808f
+#define _1_SQRT3 0.577350269f
+#define _2_SQRT3 1.154700538f
 
 #define _constrain(amt, low, high) \
   ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
@@ -176,8 +180,106 @@ void FOC_Bind_SensorGetVelocity(FOC_T *hfoc, FUNC_SENSOR_GET_VELOCITY s)
 }
 
 /**
- * @description: 更新传感器数据
+ * @description: 更新传感器数据并缓存电角度
  * @param {FOC_T} *hfoc foc句柄
  * @return {*}
  */
-void FOC_SensorUpdate(FOC_T *hfoc) { hfoc->Sensor_Update(); }
+void FOC_SensorUpdate(FOC_T *hfoc)
+{
+  hfoc->Sensor_Update();
+  hfoc->cached_angle_el = _closeloop_electricalAngle(hfoc);  // 缓存电角度
+}
+
+/**
+ * @description: Clarke变换 (abc -> αβ)
+ * @param {FOC_T} *hfoc foc句柄
+ * @param {float} ia, ib, ic 三相电流
+ * @return {*}
+ */
+void FOC_Clarke(FOC_T *hfoc, float ia, float ib, float ic)
+{
+  hfoc->i_a = ia;
+  hfoc->i_b = ib;
+  hfoc->i_c = ic;
+
+  // Clarke变换: i_alpha = ia, i_beta = (ia + 2*ib) / sqrt(3)
+  hfoc->i_alpha = ia;
+  hfoc->i_beta = _1_SQRT3 * ia + _2_SQRT3 * ib;
+}
+
+/**
+ * @description: Park变换 (αβ -> dq)
+ * @param {FOC_T} *hfoc foc句柄
+ * @param {float} angle_el 电角度
+ * @return {*}
+ */
+void FOC_Park(FOC_T *hfoc, float angle_el)
+{
+  float sin_angle = sinf(angle_el);
+  float cos_angle = cosf(angle_el);
+
+  // Park变换
+  hfoc->i_d =  hfoc->i_alpha * cos_angle + hfoc->i_beta * sin_angle;
+  hfoc->i_q = -hfoc->i_alpha * sin_angle + hfoc->i_beta * cos_angle;
+}
+
+/**
+ * @description: 设置力矩（带Ud/Uq输入）
+ * @param {FOC_T} *hfoc foc句柄
+ * @param {float} Ud d轴电压
+ * @param {float} Uq q轴电压
+ * @param {float} angle_el 电角度
+ * @return {*}
+ */
+void FOC_SetTorqueWithCurrent(FOC_T *hfoc, float Ud, float Uq, float angle_el)
+{
+  float limit = hfoc->voltage_power_supply / 2.0f;
+  Ud = _constrain(Ud, -limit, limit);
+  Uq = _constrain(Uq, -limit, limit);
+  angle_el = _normalizeAngle(angle_el);
+
+  float sin_angle = sinf(angle_el);
+  float cos_angle = cosf(angle_el);
+
+  // Park逆变换
+  float Ualpha = Ud * cos_angle - Uq * sin_angle;
+  float Ubeta  = Ud * sin_angle + Uq * cos_angle;
+
+  // Clarke逆变换 (SPWM)
+  float Ua = Ualpha + hfoc->voltage_power_supply / 2.0f;
+  float Ub = (-Ualpha + _SQRT3 * Ubeta) / 2.0f + hfoc->voltage_power_supply / 2.0f;
+  float Uc = (-Ualpha - _SQRT3 * Ubeta) / 2.0f + hfoc->voltage_power_supply / 2.0f;
+
+  _setPwm(hfoc, Ua, Ub, Uc);
+}
+
+/**
+ * @description: 电流环控制
+ * @param {FOC_T} *hfoc foc句柄
+ * @param {float} id_ref d轴电流参考值 (通常为0)
+ * @param {float} iq_ref q轴电流参考值 (力矩指令)
+ * @param {float} ia, ib, ic 采样的三相电流
+ * @param {void*} pid_id d轴PID控制器
+ * @param {void*} pid_iq q轴PID控制器
+ * @return {*}
+ */
+void FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
+                            float ia, float ib, float ic,
+                            void *pid_id, void *pid_iq)
+{
+  // 使用缓存的电角度（由速度环更新，避免在电流环中读取I2C）
+  float angle_el = hfoc->cached_angle_el;
+
+  // Clarke变换: abc -> αβ
+  FOC_Clarke(hfoc, ia, ib, ic);
+
+  // Park变换: αβ -> dq
+  FOC_Park(hfoc, angle_el);
+
+  // 电流环PID控制
+  float Ud = PID_Calc((PID_T *)pid_id, id_ref - hfoc->i_d);
+  float Uq = PID_Calc((PID_T *)pid_iq, iq_ref - hfoc->i_q);
+
+  // 输出电压
+  FOC_SetTorqueWithCurrent(hfoc, Ud, Uq, angle_el);
+}

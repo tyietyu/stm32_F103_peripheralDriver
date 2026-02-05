@@ -29,6 +29,14 @@ typedef struct
   float u_a, u_b, u_c;
   float dc_a, dc_b, dc_c;
 
+  /* 电流环相关 */
+  float i_alpha;              // alpha轴电流
+  float i_beta;               // beta轴电流
+  float i_d;                  // d轴电流
+  float i_q;                  // q轴电流
+  float i_a, i_b, i_c;        // 三相电流
+  float cached_angle_el;      // 缓存的电角度（供电流环使用）
+
   int dir; // 方向
   int pp;  // 极对数
 
@@ -49,6 +57,14 @@ void FOC_Bind_SensorUpdate(FOC_T *hfoc, FUNC_SENSOR_UPDATE s);
 void FOC_Bind_SensorGetOnceAngle(FOC_T *hfoc, FUNC_SENSOR_GET_ONCE_ANGLE s);
 void FOC_Bind_SensorGetAngle(FOC_T *hfoc, FUNC_SENSOR_GET_ANGLE s);
 void FOC_Bind_SensorGetVelocity(FOC_T *hfoc, FUNC_SENSOR_GET_VELOCITY s);
+
+/* 电流环相关函数 */
+void FOC_Clarke(FOC_T *hfoc, float ia, float ib, float ic);
+void FOC_Park(FOC_T *hfoc, float angle_el);
+void FOC_SetTorqueWithCurrent(FOC_T *hfoc, float Ud, float Uq, float angle_el);
+void FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
+                            float ia, float ib, float ic,
+                            void *pid_id, void *pid_iq);
 
 float _normalizeAngle(float angle);
 float _openloop_electricalAngle(float shaft_angle, int pole_pairs);

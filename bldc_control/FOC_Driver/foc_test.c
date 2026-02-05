@@ -45,3 +45,10 @@ void Foc_TestCloseloopAngle(FOC_T *hfoc, PID_T *pid, float angle)
   // FOC_SetTorque(hfoc, angle, FOC_CloseloopElectricalAngle(hfoc));
 }
 
+float Foc_VelocityLoop(FOC_T *hfoc, LOWPASS_FILTER_T *filter,
+                       PID_T *pid, float target_velocity)
+{
+  float SensorVel = hfoc->Sensor_GetVelocity();
+  SensorVel = LOWPASS_FILTER_Calc(filter, hfoc->dir * SensorVel);
+  return PID_Calc(pid, (target_velocity - SensorVel) * 180.0f / 3.14159f);
+}

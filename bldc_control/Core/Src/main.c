@@ -50,19 +50,19 @@ g_Flag_t g_led_status={0};
 g_Flag_t g_bldc_motor_status={0};
 
 typedef struct {
-  volatile float I_U; // UÏàµçÁ÷ (A)
-  volatile float I_V; // VÏàµçÁ÷ (A)
-  volatile float I_W; // WÏàµçÁ÷ (A)
-  volatile float V_U; // UÏàµçÑ¹ (V)
-  volatile float V_V; // VÏàµçÑ¹ (V)
-  volatile float V_W; // WÏàµçÑ¹ (V)
+  volatile float I_U; // Uï¿½ï¿½ï¿½ï¿½ï¿½ (A)
+  volatile float I_V; // Vï¿½ï¿½ï¿½ï¿½ï¿½ (A)
+  volatile float I_W; // Wï¿½ï¿½ï¿½ï¿½ï¿½ (A)
+  volatile float V_U; // Uï¿½ï¿½ï¿½Ñ¹ (V)
+  volatile float V_V; // Vï¿½ï¿½ï¿½Ñ¹ (V)
+  volatile float V_W; // Wï¿½ï¿½ï¿½Ñ¹ (V)
 } Monitor_Data_t;
 Monitor_Data_t g_monitor_data;
 
-typedef struct{
-  volatile uint32_t adc_raw_data[ADC_CHANNEL_NUM];								
-}uAdcValue_t;
-uAdcValue_t adc_value;
+uint32_t adc_Voltage_buf[ADC_CHANNEL_NUM];
+LOWPASS_FILTER_T voltage_filter[ADC_CHANNEL_NUM];
+LOWPASS_FILTER_T current_filter[ADC_CHANNEL_NUM];
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -80,8 +80,11 @@ uAdcValue_t adc_value;
 FOC_T foc;
 PID_T velPID;
 PID_T anglePID;
+PID_T pid_id, pid_iq;
+
 LOWPASS_FILTER_T velFilter;
-float target_velocity = 20.0f; // Ä¿±êËÙ¶È 20 rad/s
+float target_velocity = 20.0f; // Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ 20 rad/s
+volatile float iq_ref = 0.0f; // qï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î¿ï¿½Öµ
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -92,7 +95,14 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+void ADC_Filter_Init(float voltage_tf, float current_tf)
+{
+  for (int i = 0; i < ADC_CHANNEL_NUM; i++) 
+  {
+    LOWPASS_FILTER_Init(&voltage_filter[i], voltage_tf);
+    LOWPASS_FILTER_Init(&current_filter[i], current_tf);
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -136,20 +146,28 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
   HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
   
+  ADC_Filter_Init(0.01f, 0.005f);
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_ADCEx_InjectedStart_IT(&hadc1);
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_value.adc_raw_data, ADC_CHANNEL_NUM);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf, ADC_CHANNEL_NUM);
+  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, PWM_PERIOD / 2);
+
   CAW_LOG_Init(&huart1, LEVEL_DEBUG, true);
   CAW_LOG_DEBUG("CAW FOC start ...");
 
-  /*  FOC ³õÊ¼»¯ÅäÖÃ */
+  /*  FOC init */
   FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);
   FOC_SetVoltageLimit(&foc, 24.0f);
   FOC_HAL_InitA(&foc);
+  
   PID_Init(&velPID, 0.5f, 0.01f, 0.0f, 1000.0f,foc.voltage_power_supply / 2);
   PID_Init(&anglePID, 0.5f, 0.01f, 0.0f, 100000.0f, 100);
+  PID_Init(&pid_id, 0.5f, 0.01f, 0.0f, 1000.0f, 12.0f);  // dï¿½ï¿½PID
+  PID_Init(&pid_iq, 0.5f, 0.01f, 0.0f, 1000.0f, 12.0f);  // qï¿½ï¿½PID
+
   LOWPASS_FILTER_Init(&velFilter, 0.01f);
   FOC_AlignmentSensor(&foc);
+  HAL_GPIO_WritePin(EN_GATE_GPIO_Port, EN_GATE_Pin, GPIO_PIN_SET);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -159,13 +177,11 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    // ËÙ¶È»·ÔÚÖ÷Ñ­»·Ö´ÐÐ (1kHz)£¬µçÁ÷»·ÔÚADCÖÐ¶ÏÖ´ÐÐ (15kHz)
     if(g_bldc_motor_status.flag)
     {
       g_bldc_motor_status.flag = 0;
       FOC_SensorUpdate(&foc);
-      // Ö´ÐÐ FOC ±Õ»·ËÙ¶È¿ØÖÆ
-      Foc_TestCloseloopVelocity(&foc, &velFilter, &velPID, target_velocity);
+      iq_ref = Foc_VelocityLoop(&foc, &velFilter, &velPID, target_velocity);
     }
 
     if(g_led_status.flag)
@@ -226,13 +242,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim == &htim2)
   {
-    if(g_bldc_motor_status.count ++ >= 1)
+    if(g_bldc_motor_status.count ++ >= 10) //1ms FOC angle update
     {
       g_bldc_motor_status.count = 0;
       g_bldc_motor_status.flag = 1;
     }
 
-    if (g_led_status.count ++ >= 200)
+    if (g_led_status.count ++ >= 2000) //200ms LED
     {
       g_led_status.count = 0;
       g_led_status.flag = 1;
@@ -244,26 +260,42 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
   if (hadc == &hadc1)
   {
-    g_monitor_data.V_U = adc_value.adc_raw_data[0] * ADC_VOLTAGE_FACTOR;
-    g_monitor_data.V_V = adc_value.adc_raw_data[1] * ADC_VOLTAGE_FACTOR;
-    g_monitor_data.V_W = adc_value.adc_raw_data[2] * ADC_VOLTAGE_FACTOR;
+    float phase_voltage[ADC_CHANNEL_NUM];
+    for (int i = 0; i < ADC_CHANNEL_NUM; i++) 
+    {
+      float raw_voltage = (float)adc_Voltage_buf[i] * ADC_VOLTAGE_FACTOR;
+       phase_voltage[i] = LOWPASS_FILTER_Calc(&voltage_filter[i], raw_voltage);
+    }
+
+    g_monitor_data.V_U = phase_voltage[0];
+    g_monitor_data.V_V = phase_voltage[1];
+    g_monitor_data.V_W = phase_voltage[2];
   }
 }
 
 void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
   const float factor = ADC_REF_VOLTAGE / ADC_RESOLUTION;
+
   if (hadc->Instance == ADC1)
   {
-    // 1. ²É¼¯ÈýÏàµçÁ÷
     float raw_iu = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
     float raw_iv = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_2);
     float raw_iw = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_3);
 
-    g_monitor_data.I_U = (raw_iu * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
-    g_monitor_data.I_V = (raw_iv * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
-    g_monitor_data.I_W = (raw_iw * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
+    float iu = (raw_iu * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
+    float iv = (raw_iv * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
+    float iw = (raw_iw * factor - ADC_BIAS_VOLTAGE) * VOLTAGE_TO_CURRENT;
 
+    g_monitor_data.I_U = LOWPASS_FILTER_Calc(&current_filter[0], iu);
+    g_monitor_data.I_V = LOWPASS_FILTER_Calc(&current_filter[1], iv);
+    g_monitor_data.I_W = LOWPASS_FILTER_Calc(&current_filter[2], iw);
+
+    FOC_CurrentLoopControl(&foc, 0.0f, iq_ref, 
+                          g_monitor_data.I_U, 
+                          g_monitor_data.I_V, 
+                          g_monitor_data.I_W, 
+                          &pid_id, &pid_iq);
   }
 }
 
