@@ -83,8 +83,8 @@ PID_T anglePID;
 PID_T pid_id, pid_iq;
 LOWPASS_FILTER_T velFilter;
 
-float target_velocity = 20.0f; // TargetSpeed 20 rad/s
-float target_angle = 180.0f;    // TargetAngle 0 rad
+float target_velocity = 20.0f;  // TargetSpeed 20 rad/s
+float target_angle = 3.14159f;  // TargetAngle 180 rad
 volatile float iq_ref = 0.0f; // QCurrentRef
 /* USER CODE END PV */
 
@@ -152,30 +152,31 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
   HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
   
-  ADC_Filter_Init(0.01f, 0.005f);
-  HAL_TIM_Base_Start_IT(&htim2);
-  HAL_ADCEx_InjectedStart_IT(&hadc1);
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf, ADC_CHANNEL_NUM);
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, PWM_PERIOD / 2);
-
-  Enable_DRV8301_Driver(1); // Enable DRV8301
-  CAW_LOG_Init(&huart1, LEVEL_DEBUG, true);
-  CAW_LOG_DEBUG("CAW FOC start ...");
+  HAL_TIM_Base_Start_IT(&htim2);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf, ADC_CHANNEL_NUM);
 
   /*  FOC init */
-  FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);   // motor 24V  volatge input,1 dir,  11 pole pairs 
+  ADC_Filter_Init(0.01f, 0.005f);
+  FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);   // motor 24V  volatge input,1 dir,  11 pole pairs
   FOC_SetVoltageLimit(&foc, 24.0f);                             // voltage limit 24V
   FOC_HAL_InitA(&foc);
   
-  //P I D Ramp Limit 
-  PID_Init(&velPID, 0.5f, 0.01f, 0.0f, 1000.0f, 0.7f);      //0.7A max
+  //P I D Ramp Limit
+  PID_Init(&velPID, 2.0f, 0.5f, 0.0f, 1000.0f, 0.7f);      //0.7A max
   PID_Init(&anglePID, 5.0f, 0.1f, 0.05f, 500.0f, 40.0f);    //40rad/s max
   PID_Init(&pid_id, 1.5f, 0.05f, 0.0f, 1000.0f, 8.0f);      //8V max
   PID_Init(&pid_iq, 1.5f, 0.05f, 0.0f, 1000.0f, 8.0f);      //8V max
-
+  
   LOWPASS_FILTER_Init(&velFilter, 0.01f);                   //filter time constant 10ms
   FOC_Current_Offset_Calibration(&hadc1, 200);
+  Enable_DRV8301_Driver(1);
   FOC_AlignmentSensor(&foc);
+  FOC_SensorUpdate(&foc);
+  HAL_ADCEx_InjectedStart_IT(&hadc1);
+
+  CAW_LOG_Init(&huart1, LEVEL_DEBUG, true);
+  CAW_LOG_DEBUG("CAW FOC start ...");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -189,12 +190,18 @@ int main(void)
     {
       g_bldc_motor_status.flag = 0;
       FOC_SensorUpdate(&foc);
-      // Voltage SpeedLoop iq_ref
-      iq_ref = Foc_VelocityLoop(&foc, &velFilter, &velPID, target_velocity);
-      
-      //PositionLoop iq_ref
-      //iq_ref = Foc_PositionLoop(&foc, &anglePID, &velFilter, &velPID,target_angle);
 
+      // VelocityLoop iq_ref
+      float temp_iq = Foc_VelocityLoop(&foc, &velFilter, &velPID, target_velocity);
+      __disable_irq();
+      iq_ref = temp_iq;
+      __enable_irq();
+
+      //PositionLoop iq_ref
+      //float temp_iq = Foc_PositionLoop(&foc, &anglePID, &velFilter, &velPID, target_angle);
+      //__disable_irq();
+      //iq_ref = temp_iq;
+      //__enable_irq();
     }
 
     if(g_led_status.flag)

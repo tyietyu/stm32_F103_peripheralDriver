@@ -65,5 +65,5 @@ float Foc_VelocityLoop(FOC_T *hfoc, LOWPASS_FILTER_T *filter,
 {
   float SensorVel = hfoc->Sensor_GetVelocity();
   SensorVel = LOWPASS_FILTER_Calc(filter, hfoc->dir * SensorVel);
-  return PID_Calc(pid, (target_velocity - SensorVel) * 180.0f / 3.14159f);
+  return PID_Calc(pid, target_velocity - SensorVel);
 }

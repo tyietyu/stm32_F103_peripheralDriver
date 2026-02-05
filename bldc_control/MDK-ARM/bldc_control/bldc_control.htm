@@ -3,7 +3,7 @@
 <title>Static Call Graph - [bldc_control\bldc_control.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image bldc_control\bldc_control.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Thu Feb 05 15:04:52 2026
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Thu Feb 05 15:30:10 2026
 <BR><P>
 <H3>Maximum Stack Usage =        392 bytes + Unknown(Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
@@ -719,7 +719,7 @@ Global Symbols
 </UL>
 <BR>[Address Reference Count : 1]<UL><LI> startup_stm32f407xx.o(RESET)
 </UL>
-<P><STRONG><a name="[139]"></a>CAW_LOG_Init</STRONG> (Thumb, 12 bytes, Stack size 0 bytes, log.o(i.CAW_LOG_Init))
+<P><STRONG><a name="[13a]"></a>CAW_LOG_Init</STRONG> (Thumb, 12 bytes, Stack size 0 bytes, log.o(i.CAW_LOG_Init))
 <BR><BR>[Called By]<UL><LI><a href="#[5c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
 
@@ -880,11 +880,11 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[a0]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;FOC_CurrentLoopControl
 </UL>
 
-<P><STRONG><a name="[13a]"></a>FOC_SetVoltageLimit</STRONG> (Thumb, 6 bytes, Stack size 0 bytes, foc.o(i.FOC_SetVoltageLimit))
+<P><STRONG><a name="[138]"></a>FOC_SetVoltageLimit</STRONG> (Thumb, 6 bytes, Stack size 0 bytes, foc.o(i.FOC_SetVoltageLimit))
 <BR><BR>[Called By]<UL><LI><a href="#[5c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
 
-<P><STRONG><a name="[b7]"></a>Foc_VelocityLoop</STRONG> (Thumb, 72 bytes, Stack size 24 bytes, foc_test.o(i.Foc_VelocityLoop))
+<P><STRONG><a name="[b7]"></a>Foc_VelocityLoop</STRONG> (Thumb, 56 bytes, Stack size 24 bytes, foc_test.o(i.Foc_VelocityLoop))
 <BR><BR>[Stack]<UL><LI>Max Depth = 40<LI>Call Chain = Foc_VelocityLoop &rArr; LOWPASS_FILTER_Calc
 </UL>
 <BR>[Calls]<UL><LI><a href="#[b8]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;LOWPASS_FILTER_Calc
@@ -931,7 +931,7 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[a5]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;FOC_Current_Offset_Calibration
 </UL>
 
-<P><STRONG><a name="[138]"></a>HAL_ADCEx_InjectedStart_IT</STRONG> (Thumb, 232 bytes, Stack size 12 bytes, stm32f4xx_hal_adc_ex.o(i.HAL_ADCEx_InjectedStart_IT))
+<P><STRONG><a name="[139]"></a>HAL_ADCEx_InjectedStart_IT</STRONG> (Thumb, 232 bytes, Stack size 12 bytes, stm32f4xx_hal_adc_ex.o(i.HAL_ADCEx_InjectedStart_IT))
 <BR><BR>[Stack]<UL><LI>Max Depth = 12<LI>Call Chain = HAL_ADCEx_InjectedStart_IT
 </UL>
 <BR>[Called By]<UL><LI><a href="#[5c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
@@ -2093,7 +2093,7 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[124]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__ieee754_rem_pio2
 </UL>
 
-<P><STRONG><a name="[5c]"></a>main</STRONG> (Thumb, 426 bytes, Stack size 24 bytes, main.o(i.main))
+<P><STRONG><a name="[5c]"></a>main</STRONG> (Thumb, 438 bytes, Stack size 24 bytes, main.o(i.main))
 <BR><BR>[Stack]<UL><LI>Max Depth = 392<LI>Call Chain = main &rArr; FOC_HAL_InitA &rArr; AS5600_Init &rArr; AS5600_GetRawAngle &rArr; CAW_LOG_Write &rArr; __2snprintf
 </UL>
 <BR>[Calls]<UL><LI><a href="#[117]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;PID_Init
@@ -2110,16 +2110,16 @@ Global Symbols
 <LI><a href="#[ca]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_Init
 <LI><a href="#[13b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_TogglePin
 <LI><a href="#[c4]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_ADC_Start_DMA
-<LI><a href="#[138]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_ADCEx_InjectedStart_IT
+<LI><a href="#[139]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_ADCEx_InjectedStart_IT
 <LI><a href="#[b7]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Foc_VelocityLoop
-<LI><a href="#[13a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;FOC_SetVoltageLimit
+<LI><a href="#[138]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;FOC_SetVoltageLimit
 <LI><a href="#[b0]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;FOC_SensorUpdate
 <LI><a href="#[a9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;FOC_HAL_InitA
 <LI><a href="#[a5]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;FOC_Current_Offset_Calibration
 <LI><a href="#[9f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;FOC_Closeloop_Init
 <LI><a href="#[9b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;FOC_AlignmentSensor
 <LI><a href="#[8b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Write
-<LI><a href="#[139]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Init
+<LI><a href="#[13a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CAW_LOG_Init
 <LI><a href="#[11b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;SystemClock_Config
 <LI><a href="#[99]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Enable_DRV8301_Driver
 <LI><a href="#[85]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ADC_Filter_Init
