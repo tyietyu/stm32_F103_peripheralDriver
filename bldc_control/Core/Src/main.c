@@ -159,17 +159,21 @@ int main(void)
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, PWM_PERIOD / 2);
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf, ADC_CHANNEL_NUM);
-
-  DRV8301_ConfigInit(&hspi2,
+  
+  CAW_LOG_Init(&huart1, LEVEL_DEBUG, true);
+  Enable_DRV8301_Driver(1);
+  if( DRV8301_ConfigInit(&hspi2,
                       DRV8301_CR1_GATE_CURRENT_1_7A,    // 1.7A 栅极驱动电流
                       DRV8301_CR1_PWM_MODE_6PWM,        // 6-PWM 模式
                       DRV8301_CR1_OC_MODE_LATCH_SD,     // 过流锁存关断
                       DRV8301_OC_ADJ_SET_0_250V,        // 0.25V VDS 阈值
                       DRV8301_CR2_GAIN_10,              // 放大器增益 10V/V
                       DRV8301_CR2_OCTW_MODE_OT_OC,      // 过温报告模式
-                      DRV8301_CR2_OC_TOFF_CYCLE);       // 过温关断关闭
-
-
+                      DRV8301_CR2_OC_TOFF_CYCLE)        // 过温关断关闭
+      != HAL_OK){
+        CAW_LOG_ERROR("DRV8301 Init Failed!");
+    }
+                      
   /*  FOC init */
   ADC_Filter_Init(0.01f, 0.005f);
   FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);   // motor 24V  volatge input,1 dir,  11 pole pairs
@@ -184,12 +188,10 @@ int main(void)
   
   LOWPASS_FILTER_Init(&velFilter, 0.01f);                   //filter time constant 10ms
   FOC_Current_Offset_Calibration(&hadc1, 200);
-  Enable_DRV8301_Driver(1);
   FOC_AlignmentSensor(&foc);
   FOC_SensorUpdate(&foc);
   HAL_ADCEx_InjectedStart_IT(&hadc1);
 
-  CAW_LOG_Init(&huart1, LEVEL_DEBUG, true);
   CAW_LOG_DEBUG("BLDC Motor ready ...");
   /* USER CODE END 2 */
 
