@@ -45,7 +45,7 @@ I (../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h)(0x68D4EC70
 I (../Core/Inc/tim.h)(0x68D4EC70)
 I (../Core/Inc/usart.h)(0x68D4EC70)
 I (../Core/Inc/gpio.h)(0x68D4EC70)
-I (../Middlewares/bsp/mpu6050.h)(0x6982F88B)
+I (../Middlewares/bsp/mpu6050.h)(0x69C37B6B)
 I (../Middlewares/bsp/iic_hal.h)(0x68D4EC70)
 I (../Middlewares/SYSTEM/sys.h)(0x68D4EC70)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\math.h)(0x5E8E3CC2)
@@ -85,7 +85,7 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x68D4EC70)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5E8E3CC2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdarg.h)(0x5E8E3CC2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
-F (../Core/Src/freertos.c)(0x6982FD65)(--c99 -c --cpu Cortex-M3 -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3 -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/bsp -I ../Middlewares/bsp/dmp -I ../Middlewares/SYSTEM-I.\RTE\_mpu6050_serno-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F1xx_DFP\2.3.0\Device\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o mpu6050_serno\freertos.o --omf_browse mpu6050_serno\freertos.crf --depend mpu6050_serno\freertos.d)
+F (../Core/Src/freertos.c)(0x69C37C7F)(--c99 -c --cpu Cortex-M3 -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3 -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/bsp -I ../Middlewares/bsp/dmp -I ../Middlewares/SYSTEM-I.\RTE\_mpu6050_serno-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F1xx_DFP\2.3.0\Device\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o mpu6050_serno\freertos.o --omf_browse mpu6050_serno\freertos.crf --depend mpu6050_serno\freertos.d)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h)(0x68D4EC70)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stddef.h)(0x5E8E3CC2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
@@ -129,7 +129,7 @@ I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
 I (../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h)(0x68D4EC70)
 I (../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h)(0x68D4EC70)
 I (../Core/Inc/tim.h)(0x68D4EC70)
-I (../Middlewares/bsp/mpu6050.h)(0x6982F88B)
+I (../Middlewares/bsp/mpu6050.h)(0x69C37B6B)
 I (../Middlewares/bsp/iic_hal.h)(0x68D4EC70)
 I (../Middlewares/SYSTEM/sys.h)(0x68D4EC70)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\math.h)(0x5E8E3CC2)
@@ -891,8 +891,8 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h)(0x68D4EC70)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x68D4EC70)
 I (../Middlewares/SYSTEM/delay.h)(0x68D4EC70)
 I (../Middlewares/SYSTEM/sys.h)(0x68D4EC70)
-F (..\Middlewares\bsp\mpu6050.c)(0x6982FD3B)(--c99 -c --cpu Cortex-M3 -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3 -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/bsp -I ../Middlewares/bsp/dmp -I ../Middlewares/SYSTEM-I.\RTE\_mpu6050_serno-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F1xx_DFP\2.3.0\Device\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o mpu6050_serno\mpu6050.o --omf_browse mpu6050_serno\mpu6050.crf --depend mpu6050_serno\mpu6050.d)
-I (..\Middlewares\bsp\mpu6050.h)(0x6982F88B)
+F (..\Middlewares\bsp\mpu6050.c)(0x69C37FD3)(--c99 -c --cpu Cortex-M3 -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3 -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/bsp -I ../Middlewares/bsp/dmp -I ../Middlewares/SYSTEM-I.\RTE\_mpu6050_serno-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F1xx_DFP\2.3.0\Device\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o mpu6050_serno\mpu6050.o --omf_browse mpu6050_serno\mpu6050.crf --depend mpu6050_serno\mpu6050.d)
+I (..\Middlewares\bsp\mpu6050.h)(0x69C37B6B)
 I (..\Middlewares\bsp\iic_hal.h)(0x68D4EC70)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x68D4EC70)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x68D4EC70)
@@ -963,7 +963,7 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h)(0x68D4EC70)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h)(0x68D4EC70)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x68D4EC70)
 I (..\Middlewares\bsp\dmp\inv_mpu_dmp_motion_driver.h)(0x68D4EC70)
-I (../Middlewares/bsp/mpu6050.h)(0x6982F88B)
+I (../Middlewares/bsp/mpu6050.h)(0x69C37B6B)
 I (../Middlewares/bsp/iic_hal.h)(0x68D4EC70)
 I (../Middlewares/SYSTEM/delay.h)(0x68D4EC70)
 I (../Core/Inc/usart.h)(0x68D4EC70)

@@ -138,8 +138,13 @@ void vApplicationTickHook( void )
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-    MUP6050_Init();
-    DMP_Init();
+    uint8_t mpu6050_init_result;
+
+    mpu6050_init_result = MUP6050_Init();
+    if(mpu6050_init_result != 0U)
+    {
+      printf("MPU6050 init failed:%u\r\n", mpu6050_init_result);
+    }
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -154,23 +159,32 @@ void MX_FREERTOS_Init(void) {
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
-  /* Create the queue(s) */
-  /* creation of mpu6050_data */
-  mpu6050_dataHandle = osMessageQueueNew (10, sizeof(MPU6050_Data_t), &mpu6050_data_attributes);
+  if(mpu6050_init_result == 0U)
+  {
+    /* Create the queue(s) */
+    /* creation of mpu6050_data */
+    mpu6050_dataHandle = osMessageQueueNew (10, sizeof(MPU6050_Data_t), &mpu6050_data_attributes);
+    if(mpu6050_dataHandle == NULL)
+    {
+      printf("mpu6050_data queue create failed\r\n");
+    }
+  }
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
-  /* Create the thread(s) */
-  /* creation of mpu6050_task */
-  mpu6050_taskHandle = osThreadNew(MPU6050Task, NULL, &mpu6050_task_attributes);
-
   /* creation of serno_task */
   serno_taskHandle = osThreadNew(SERNO_TASK, NULL, &serno_task_attributes);
 
-  /* creation of usart_task */
-  usart_taskHandle = osThreadNew(USART_TASK, NULL, &usart_task_attributes);
+  if(mpu6050_dataHandle != NULL)
+  {
+    /* creation of mpu6050_task */
+    mpu6050_taskHandle = osThreadNew(MPU6050Task, NULL, &mpu6050_task_attributes);
+
+    /* creation of usart_task */
+    usart_taskHandle = osThreadNew(USART_TASK, NULL, &usart_task_attributes);
+  }
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -199,17 +213,19 @@ void MPU6050Task(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    result = Read_DMP(&pitch,&roll,&yaw);
-    if(result == 0){
-    mpu6050_data.pitch = pitch;
-    mpu6050_data.roll = roll;
-    mpu6050_data.yaw = yaw;
-    osMessageQueuePut(mpu6050_dataHandle,&mpu6050_data,0,0);
-    }else
+    result = Read_DMP(&roll,&pitch,&yaw);
+    if(result == 0)
+    {
+      mpu6050_data.roll = roll;
+      mpu6050_data.pitch = pitch;
+      mpu6050_data.yaw = yaw;
+      osMessageQueuePut(mpu6050_dataHandle,&mpu6050_data,0,0);
+    }
+    else
     {
       printf("mpu_dmp_get_data error :%d\r\n",result);
     }
-    osDelay(5);
+    osDelay(10);
   }
   /* USER CODE END MPU6050Task */
 }

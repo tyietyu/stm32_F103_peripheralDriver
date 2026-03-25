@@ -87,8 +87,7 @@ uint8_t IIC_Write_Len(uint8_t addr,uint8_t reg, uint8_t len, uint8_t *buf);
 uint8_t IIC_Read_Len(uint8_t addr,uint8_t reg,uint8_t len,uint8_t *buf);
 
 uint8_t MUP6050_Init(void);
-uint8_t DMP_Init(void);
-uint8_t Read_DMP(float* Pitch,float* Roll,float* Yaw);
+uint8_t Read_DMP(float* Roll,float* Pitch,float* Yaw);
 
 #endif
 

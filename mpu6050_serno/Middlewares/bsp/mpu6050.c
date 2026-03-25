@@ -14,6 +14,8 @@ iic_bus_t MPU_bus = {
 	.IIC_SCL_PIN  = GPIO_PIN_14,
 };
 
+static uint8_t DMP_Init(void);
+
 static void soft_iic_init(void)
 {
 	__HAL_RCC_GPIOB_CLK_ENABLE();
@@ -58,15 +60,18 @@ short MPU_Get_Temperature(void)
 
 uint8_t MUP6050_Init(void)
 {
+	uint8_t result;
+
 	soft_iic_init();
 	u8_mpu6050_id = IIC_Read_Byte(MPU_DEVICE_ID_REG);
 	if(u8_mpu6050_id == MPU_ADDR)
 	{
-		return 0;
+		result = DMP_Init();
+		return result;
 	}
 	else
 	{
-		return 1;
+		return 10U;
 	}
 }
 
@@ -176,12 +181,10 @@ static void mpu_run_self_test_local(void)
 }
 
 #define INT_EXIT_LPM0 12
-uint8_t return_value = 0;
 
-uint8_t DMP_Init(void)
+static uint8_t DMP_Init(void)
 {
-	soft_iic_init();
-
+	int result = 0;
 	struct int_param_s int_param;
 	unsigned short gyro_rate = 0, gyro_fsr = 0;
 	unsigned char accel_fsr = 0;
@@ -195,48 +198,74 @@ uint8_t DMP_Init(void)
 	int_param.lp_exit = INT_EXIT_LPM0;
 	int_param.active_low = 1;
 
-	int result = mpu_init();
-
-	if(result == 0)     //mpu init
+	result = mpu_init();
+	if(result != 0)
 	{
-		if(!mpu_set_sensors(INV_XYZ_GYRO | INV_XYZ_ACCEL))    // set gyro or/and accel
-			return_value = 1;
-
-		if(!mpu_configure_fifo(INV_XYZ_GYRO | INV_XYZ_ACCEL)) // set fifo
-			return_value = 2;
-
-		if(!mpu_set_sample_rate(DEFAULT_MPU_HZ))              // set sample
-			return_value = 3;
-
-	    mpu_get_sample_rate(&gyro_rate);
-	    mpu_get_gyro_fsr(&gyro_fsr);
-	    mpu_get_accel_fsr(&accel_fsr);
-
-		if(!dmp_load_motion_driver_firmware())       // load dmp 
-			return_value = 4;
-
-		if(!dmp_set_orientation(inv_orientation_matrix_to_scalar(gyro_orientation)))
-			return_value = 5;
-
-		if(!dmp_enable_feature(DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_TAP |
-				DMP_FEATURE_ANDROID_ORIENT | DMP_FEATURE_SEND_RAW_ACCEL | DMP_FEATURE_SEND_CAL_GYRO |
-				DMP_FEATURE_GYRO_CAL))
-				return_value = 6;
-
-		if(!dmp_set_fifo_rate(DEFAULT_MPU_HZ))    	// set sample
-			return_value = 7;
-
-			mpu_run_self_test_local();                // self test
-
-		if(!mpu_set_dmp_state(1))                 	// enable
-			return_value = 8;
+		return 1U;
 	}
-	return return_value;
+
+	result = mpu_set_sensors(INV_XYZ_GYRO | INV_XYZ_ACCEL);
+	if(result != 0)
+	{
+		return 2U;
+	}
+
+	result = mpu_configure_fifo(INV_XYZ_GYRO | INV_XYZ_ACCEL);
+	if(result != 0)
+	{
+		return 3U;
+	}
+
+	result = mpu_set_sample_rate(DEFAULT_MPU_HZ);
+	if(result != 0)
+	{
+		return 4U;
+	}
+
+	mpu_get_sample_rate(&gyro_rate);
+	mpu_get_gyro_fsr(&gyro_fsr);
+	mpu_get_accel_fsr(&accel_fsr);
+
+	result = dmp_load_motion_driver_firmware();
+	if(result != 0)
+	{
+		return 5U;
+	}
+
+	result = dmp_set_orientation(inv_orientation_matrix_to_scalar(gyro_orientation));
+	if(result != 0)
+	{
+		return 6U;
+	}
+
+	result = dmp_enable_feature(DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_TAP |
+			DMP_FEATURE_ANDROID_ORIENT | DMP_FEATURE_SEND_RAW_ACCEL | DMP_FEATURE_SEND_CAL_GYRO |
+			DMP_FEATURE_GYRO_CAL);
+	if(result != 0)
+	{
+		return 7U;
+	}
+
+	result = dmp_set_fifo_rate(DEFAULT_MPU_HZ);
+	if(result != 0)
+	{
+		return 8U;
+	}
+
+	mpu_run_self_test_local();
+
+	result = mpu_set_dmp_state(1);
+	if(result != 0)
+	{
+		return 9U;
+	}
+
+	return 0U;
 }
 
 #define q30 1073741824.0f
 
-uint8_t Read_DMP(float* Pitch,float* Roll,float* Yaw)
+uint8_t Read_DMP(float* Roll,float* Pitch,float* Yaw)
 {
 	short gyro[3], accel[3], sensors;
 	float q0=1.0f,q1=0.0f,q2=0.0f,q3=0.0f;
