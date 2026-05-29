@@ -66,7 +66,7 @@ bool      EE_Write(EE_HandleTypeDef *pHandle);
 
 #ifdef USE_BOOTLOADER
     /*****************************************************************************************************
-     * ÅäÖÃ 1: ÓĞ Bootloader µÄÄÚ´æ²¼¾Ö (STM32F1)
+     * é…ç½® 1: æœ‰ Bootloader çš„å†…å­˜å¸ƒå±€ (STM32F1)
      *****************************************************************************************************/
     #define BTLD_PAGE_NUM						20
     #define BTLD_ADDR							  FLASH_BASE
@@ -79,7 +79,7 @@ bool      EE_Write(EE_HandleTypeDef *pHandle);
     #define APP_ERASE_PAGE_NUM			((FLASH_SIZE - BTLD_SIZE - USER_EE_SIZE) / FLASH_PAGE_SIZE)
 #else
     /*****************************************************************************************************
-     * ÅäÖÃ 2: ÎŞ Bootloader µÄÄÚ´æ²¼¾Ö (STM32F1)
+     * é…ç½® 2: æ—  Bootloader çš„å†…å­˜å¸ƒå±€ (STM32F1)
      *****************************************************************************************************/
     #define APP_ADDR							  FLASH_BASE
     #define APP_SIZE							  (FLASH_SIZE - USER_EE_SIZE)
@@ -111,30 +111,30 @@ bool      EE_Write(EE_HandleTypeDef *pHandle);
 
 #ifdef USE_BOOTLOADER
     /*****************************************************************************************************
-     * ÅäÖÃ 1: ÓĞ Bootloader µÄÄÚ´æ²¼¾Ö (STM32F4)
+     * é…ç½® 1: æœ‰ Bootloader çš„å†…å­˜å¸ƒå±€ (STM32F4)
      *****************************************************************************************************/
     #define BTLD_ADDR							FLASH_BASE
-    #define BTLD_SIZE							(4 * 16 * 1024)     // ¼ÙÉèBootloaderÕ¼ÓÃ 64KB (Sector 0-3)
+    #define BTLD_SIZE							(4 * 16 * 1024)     // å‡è®¾Bootloaderå ç”¨ 64KB (Sector 0-3)
 
-    #define USER_EE_ADDR					(BTLD_ADDR + BTLD_SIZE) // EEPROMÇøÓò½ô¸úÔÚBootloaderÖ®ºó
-    #define USER_EE_SIZE          (1 * 64 * 1024)         // EEPROM´óĞ¡Îª 64KB
-    #define EE_PAGE_SECTOR				FLASH_SECTOR_4          // EEPROM Ê¹ÓÃ Sector 4
+    #define USER_EE_ADDR					(BTLD_ADDR + BTLD_SIZE) // EEPROMåŒºåŸŸç´§è·Ÿåœ¨Bootloaderä¹‹å
+    #define USER_EE_SIZE          (1 * 64 * 1024)         // EEPROMå¤§å°ä¸º 64KB
+    #define EE_PAGE_SECTOR				FLASH_SECTOR_4          // EEPROM ä½¿ç”¨ Sector 4
 
-    #define APP_ADDR							(BTLD_ADDR + BTLD_SIZE + USER_EE_SIZE) // APP ÔÚEEPROMÖ®ºó
+    #define APP_ADDR							(BTLD_ADDR + BTLD_SIZE + USER_EE_SIZE) // APP åœ¨EEPROMä¹‹å
     #define APP_SIZE							(FLASH_SIZE - BTLD_SIZE - USER_EE_SIZE)
 
 #else
     /*****************************************************************************************************
-     * ÅäÖÃ 2: ÎŞ Bootloader µÄÄÚ´æ²¼¾Ö (STM32F4)
+     * é…ç½® 2: æ—  Bootloader çš„å†…å­˜å¸ƒå±€ (STM32F4)
      *****************************************************************************************************/
-    #define USER_EE_SIZE            (1 * 128 * 1024) // Ê¹ÓÃ×îºóÒ»¸öÉÈÇø£¬Í¨³£Îª128KB
+    #define USER_EE_SIZE            (1 * 128 * 1024) // ä½¿ç”¨æœ€åä¸€ä¸ªæ‰‡åŒºï¼Œé€šå¸¸ä¸º128KB
 
     #define APP_ADDR						    FLASH_BASE
     #define APP_SIZE							  (FLASH_SIZE - USER_EE_SIZE)
 
     #define USER_EE_ADDR						(FLASH_BASE + FLASH_SIZE - USER_EE_SIZE) 
     
-    // ÖØÒª£ºĞèÒª¸ù¾İMCUĞÍºÅºÍFlash´óĞ¡£¬²éÔÄÊı¾İÊÖ²áÀ´È·¶¨×îºóÒ»¸öÉÈÇøµÄ±àºÅ¡£
+    // é‡è¦ï¼šéœ€è¦æ ¹æ®MCUå‹å·å’ŒFlashå¤§å°ï¼ŒæŸ¥é˜…æ•°æ®æ‰‹å†Œæ¥ç¡®å®šæœ€åä¸€ä¸ªæ‰‡åŒºçš„ç¼–å·ã€‚
     #define EE_PAGE_SECTOR						FLASH_SECTOR_11  
 #endif // USE_BOOTLOADER
 

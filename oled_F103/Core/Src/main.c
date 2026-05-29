@@ -61,12 +61,12 @@ volatile uint8_t mqtt_receive_complete = 0;
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-// 1. ¶¨ÒåÈı×é²»Í¬µÄ²âÊÔÊı¾İºÍ¶ÔÓ¦µÄ¾ä±ú (ÓëÖ®Ç°ÏàÍ¬)
-// µÚÒ»×é: ÓÃ»§ID
+// 1. å®šä¹‰ä¸‰ç»„ä¸åŒçš„æµ‹è¯•æ•°æ®å’Œå¯¹åº”çš„å¥æŸ„ (ä¸ä¹‹å‰ç›¸åŒ)
+// ç¬¬ä¸€ç»„: ç”¨æˆ·ID
 uint32_t user_id = 19981231;
 EE_HandleTypeDef handle_user_id;
 
-// µÚ¶ş×é: GPS×ø±ê
+// ç¬¬äºŒç»„: GPSåæ ‡
 typedef struct {
     double latitude;
     double longitude;
@@ -74,14 +74,14 @@ typedef struct {
 GpsCoord last_location = { .latitude = 39.9042, .longitude = 116.4074 };
 EE_HandleTypeDef handle_gps;
 
-// µÚÈı×é: Éè±¸×´Ì¬
-uint8_t device_status_flags = 0xAC;  // 8¸ö±êÖ¾Î»
+// ç¬¬ä¸‰ç»„: è®¾å¤‡çŠ¶æ€
+uint8_t device_status_flags = 0xAC;  // 8ä¸ªæ ‡å¿—ä½
 EE_HandleTypeDef handle_status;
 
 
-// 2. ¹æ»®Ã¿×éÊı¾İÔÚEEPROMÖĞµÄ´æ´¢²¼¾Ö£¨Æ«ÒÆµØÖ·£©
+// 2. è§„åˆ’æ¯ç»„æ•°æ®åœ¨EEPROMä¸­çš„å­˜å‚¨å¸ƒå±€ï¼ˆåç§»åœ°å€ï¼‰
 #define OFFSET_USER_ID          0
-#define OFFSET_GPS_COORD        32  // Ô¤ÁôÒ»Ğ©¿Õ¼ä
+#define OFFSET_GPS_COORD        32  // é¢„ç•™ä¸€äº›ç©ºé—´
 #define OFFSET_STATUS_FLAGS     64
 /* USER CODE END PV */
 
@@ -98,12 +98,12 @@ void ESP8266_demo(void);
   {
      printf("========= EEPROM Emulation Test Case V2 =========\n");
 
-    // ¸ù¾İ±àÒëÊ±Ñ¡ÔñµÄÅäÖÃ£¬´òÓ¡µ±Ç°²âÊÔµÄÄÚ´æ²¼¾Ö
+    // æ ¹æ®ç¼–è¯‘æ—¶é€‰æ‹©çš„é…ç½®ï¼Œæ‰“å°å½“å‰æµ‹è¯•çš„å†…å­˜å¸ƒå±€
 
     printf("--- Running in [STANDALONE / NO BOOTLOADER] mode ---\n");
     printf("--- Simulated EEPROM Address: 0x%X (At the end of Flash) ---\n\n", (unsigned int)EE_ADDRESS);
 
-    // ================== Ğ´Èë½×¶Î ==================
+    // ================== å†™å…¥é˜¶æ®µ ==================
     printf("========= Phase 1: Writing data =========\n");
 
     EE_Init(&handle_user_id, &user_id, sizeof(user_id), OFFSET_USER_ID);
@@ -126,7 +126,7 @@ void ESP8266_demo(void);
     printf("\n========= Write phase finished. =========\n\n");
 
 
-    // ================== ¶ÁÈ¡ÓëÑéÖ¤½×¶Î ==================
+    // ================== è¯»å–ä¸éªŒè¯é˜¶æ®µ ==================
     printf("========= Phase 2: Reading and Verifying data =========\n");
 
     uint32_t read_user_id = 0;
