@@ -40,6 +40,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define APP_ENABLE_EE_TEST 0
 
 /* USER CODE END PD */
 
@@ -61,6 +62,7 @@ volatile uint8_t mqtt_receive_complete = 0;
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+#if APP_ENABLE_EE_TEST
 // 1. 定义三组不同的测试数据和对应的句柄 (与之前相同)
 // 第一组: 用户ID
 uint32_t user_id = 19981231;
@@ -83,6 +85,7 @@ EE_HandleTypeDef handle_status;
 #define OFFSET_USER_ID          0
 #define OFFSET_GPS_COORD        32  // 预留一些空间
 #define OFFSET_STATUS_FLAGS     64
+#endif
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -94,6 +97,7 @@ void ESP8266_demo(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#if APP_ENABLE_EE_TEST
   void flash_test(void)
   {
      printf("========= EEPROM Emulation Test Case V2 =========\n");
@@ -160,6 +164,7 @@ void ESP8266_demo(void);
     printf("==============================================\n");
 
   }
+#endif
 /* USER CODE END 0 */
 
 /**
@@ -203,7 +208,9 @@ int main(void)
   ESP8266_demo();
   time2_start();
   // while (MPU6050_Init(&hi2c2) == 1) {};
+#if APP_ENABLE_EE_TEST
   flash_test();
+#endif
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -213,7 +220,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    ESP8266_receive_msg(NULL, app_payload_buffer, 256);
+    ESP8266_receive_msg(NULL, app_payload_buffer, sizeof(app_payload_buffer));
     OTA_Loop();
   }
 

@@ -7,7 +7,7 @@
 #define __IO volatile
 typedef __IO uint16_t vuint16_t;
 
-#define STM32_FLASH_SIZE 128 // 所选STM32的FLASH容量大小(单位为K)
+#define STM32_FLASH_SIZE 64U // STM32F103C8T6 Flash size, unit: KB
 #if STM32_FLASH_SIZE < 256   // 设置扇区大小
 #define STM_SECTOR_SIZE 1024 // 1K字节
 #else
@@ -15,7 +15,7 @@ typedef __IO uint16_t vuint16_t;
 #endif
 
 #define STM32_FLASH_BASE 0x08000000                             // STM32 FLASH的起始地址
-#define FLASH_SAVE_ADDR STM32_FLASH_BASE + STM_SECTOR_SIZE * 62 // 写Flash的地址，这里从倒数第二页开始
+#define FLASH_SAVE_ADDR (STM32_FLASH_BASE + STM_SECTOR_SIZE * 60U) // Keep away from the last 2 EEPROM pages
 #define STM32_FLASH_WREN 1                                      // 使能FLASH写入(0，不是能;1，使能)
 #define FLASH_WAITETIME 50000                                   // FLASH等待超时时间
 
