@@ -18,18 +18,33 @@ void PID_Init(PID_T *pid, float P, float I, float D, float ramp, float limit)
   pid->d = D;
   pid->output_ramp = ramp;
   pid->limit = limit;
+  pid->fixed_dt = 0.0f;
   pid->prev_error = 0.0f;
   pid->prev_output = 0.0f;
   pid->prev_integral = 0.0f;
   pid->prev_timestamp = HAL_GetTick(); // 获取毫秒时间
 }
 
+void PID_SetFixedDt(PID_T *pid, float dt_s)
+{
+  pid->fixed_dt = (dt_s > 0.0f) ? dt_s : 0.0f;
+}
+
 float PID_Calc(PID_T *pid, float error)
 {
   unsigned long timestamp_now = HAL_GetTick();
-  float ts = (timestamp_now - pid->prev_timestamp) * 1e-3f; // 转换成秒
-  if (ts <= 0 || ts > 0.5f)
-    ts = 1e-3f;
+  float ts;
+  if (pid->fixed_dt > 0.0f)
+  {
+    // 固定步长模式：用于由硬件触发的高频环路(如电流环)，避免 HAL_GetTick 1ms 分辨率欠采样
+    ts = pid->fixed_dt;
+  }
+  else
+  {
+    ts = (timestamp_now - pid->prev_timestamp) * 1e-3f; // 转换成秒
+    if (ts <= 0 || ts > 0.5f)
+      ts = 1e-3f;
+  }
 
   // P环处理
   float proportional = pid->p * error;

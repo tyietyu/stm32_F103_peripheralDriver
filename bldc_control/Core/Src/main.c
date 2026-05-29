@@ -185,6 +185,9 @@ int main(void)
   PID_Init(&anglePID, 5.0f, 0.1f, 0.05f, 500.0f, 40.0f);    //40rad/s max
   PID_Init(&pid_id, 1.5f, 0.05f, 0.0f, 1000.0f, 8.0f);      //8V max
   PID_Init(&pid_iq, 1.5f, 0.05f, 0.0f, 1000.0f, 8.0f);      //8V max
+  // 电流环由 TIM1_CC4 触发 ADC 注入同步执行，周期严格等于 1/PWM_FREQ
+  PID_SetFixedDt(&pid_id, 1.0f / (float)PWM_FREQ);
+  PID_SetFixedDt(&pid_iq, 1.0f / (float)PWM_FREQ);
   
   LOWPASS_FILTER_Init(&velFilter, 0.01f);                   //filter time constant 10ms
   FOC_Current_Offset_Calibration(&hadc1, 200);

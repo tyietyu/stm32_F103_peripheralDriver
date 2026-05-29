@@ -14,6 +14,7 @@ typedef struct {
   float d;  // 微分增益
   float output_ramp;
   float limit;
+  float fixed_dt;                // >0 时使用固定积分步长(秒)，0 时按 HAL_GetTick 实时计算
 
   float prev_error;              // 最后跟踪误差
   float prev_output;             // 最后一个pid输出值
@@ -23,6 +24,7 @@ typedef struct {
 
 void PID_Init(PID_T *pid, float P, float I, float D, float ramp, float limit);
 void PID_Set(PID_T *pid, float P, float I, float D, float ramp);
+void PID_SetFixedDt(PID_T *pid, float dt_s);
 float PID_Calc(PID_T *pid, float error);
 
 #endif
