@@ -78,6 +78,7 @@ extern esp8266_config_t esp8266_config;
 typedef struct
 {
     unsigned char receive_buff[ESP8266_RX_BUF_SIZE];
+    unsigned char process_buff[ESP8266_RX_BUF_SIZE];
     unsigned char send_buff[ESP8266_RX_BUF_SIZE];
     volatile uint8_t receive_start;  
     volatile uint16_t receive_count;

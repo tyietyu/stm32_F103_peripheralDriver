@@ -431,3 +431,22 @@ APP 上报时应包含：
 - bootloader 代码空间有限，不能引入复杂日志、JSON、OLED 或 MQTT 逻辑。
 - 外部 SPI Flash 和 OLED/SPI/I2C 引脚资源必须在硬件上确认，避免总线冲突。
 
+## 当前代码同步状态
+
+截至 2026-06-01，当前工程已经按本架构落地了第一版 OTA 代码骨架：
+
+- APP 工程 IROM 已调整到 `0x08004000`，size 为 `0x0000B000`。
+- `system_stm32f1xx.c` 已启用 `USER_VECT_TAB_ADDRESS`，`VECT_TAB_OFFSET` 为 `0x00004000U`。
+- 已新增 `ota_types.h`、`crc32.c/.h`、`spi_flash.c/.h`、`ota_storage.c/.h`、`ota_verify.c/.h`。
+- APP 侧 `otadriver.c` 已改为外部 SPI Flash staging，支持下载块写入、bitmap、metadata、MD5 包校验、CRC32 镜像校验、ready 后复位。
+- 已新增 `oled_F103/BootLoader` 工程，包含 `boot_jump`、`boot_flash`、`boot_ota`，支持检查 staging、搬运 APP、写后校验和 pending confirm 状态。
+- `tools/ota_pack.py` 已用于生成 `ota_image_header_t + APP binary` 格式的 OTA 包。
+- APP Keil post-build 已配置为生成 `oled_F103.bin` 和 `oled_F103.ota.bin`。
+- ESP8266 UART DMA 接收已增加 `process_buff` 快照，避免 OTA payload 在主循环解析前被下一次 DMA 接收覆盖。
+
+仍需板级确认：
+
+- 外部 SPI Flash 实物型号、容量、供电和 SPI1 引脚连接。
+- ESP8266 AT 固件对 `+MQTTSUBRECV` 二进制 payload 的实际长度和分包行为。
+- bootloader 烧录后无升级任务能稳定跳转 APP，OLED 和串口 DMA 正常。
+- OTA 过程中断电、校验失败、未确认启动等失败路径。

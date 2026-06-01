@@ -68,11 +68,11 @@ static uint8_t ESP8266_wait_for_ack(const char *ack, uint16_t timeout_ms)
 
     while (count < timeout_ms) {
         if (uart_init.esp8266_buffer.receive_start == 1U) {
-            if (strstr((const char *)uart_init.esp8266_buffer.receive_buff, ack) != NULL) {
+            if (strstr((const char *)uart_init.esp8266_buffer.process_buff, ack) != NULL) {
                 return ESP8266_EOK;
             }
-            if ((strstr((const char *)uart_init.esp8266_buffer.receive_buff, "ERROR") != NULL) ||
-                (strstr((const char *)uart_init.esp8266_buffer.receive_buff, "FAIL") != NULL)) {
+            if ((strstr((const char *)uart_init.esp8266_buffer.process_buff, "ERROR") != NULL) ||
+                (strstr((const char *)uart_init.esp8266_buffer.process_buff, "FAIL") != NULL)) {
                 ESP8266_uart_rx_clear(uart_init.esp8266_buffer.receive_count);
                 return ESP8266_ERROR;
             }
@@ -123,6 +123,7 @@ uart_init_t uart_init = {
     .uart_receive = hal_uart_receive,
     .esp8266_buffer.send_buff = {0},
     .esp8266_buffer.receive_buff = {0},
+    .esp8266_buffer.process_buff = {0},
     .esp8266_buffer.receive_start = 0,
     .esp8266_buffer.receive_count = 0,
 };
@@ -145,6 +146,7 @@ void ESP8266_uart_rx_clear(uint16_t len)
     }
 
     memset((void *)uart_init.esp8266_buffer.receive_buff, 0x00, len);
+    memset((void *)uart_init.esp8266_buffer.process_buff, 0x00, len);
     uart_init.esp8266_buffer.receive_count = 0;
     uart_init.esp8266_buffer.receive_start = 0;
 }
@@ -175,9 +177,15 @@ void hal_uart2_receiver_handle(UART_HandleTypeDef *huart)
             if(len >= ESP8266_RX_BUF_SIZE) {
                 len = ESP8266_RX_BUF_SIZE - 1U;
             }
-            uart_init.esp8266_buffer.receive_count = len;
-            uart_init.esp8266_buffer.receive_start = 1;
-            uart_init.esp8266_buffer.receive_buff[len] = '\0';
+            if (uart_init.esp8266_buffer.receive_start == 0U) {
+                memcpy((void *)uart_init.esp8266_buffer.process_buff,
+                       (const void *)uart_init.esp8266_buffer.receive_buff,
+                       len);
+                uart_init.esp8266_buffer.process_buff[len] = '\0';
+                uart_init.esp8266_buffer.receive_count = len;
+                uart_init.esp8266_buffer.receive_start = 1;
+            }
+            memset((void *)uart_init.esp8266_buffer.receive_buff, 0x00, ESP8266_RX_BUF_SIZE);
         }
         HAL_UART_Receive_DMA(huart, uart_init.esp8266_buffer.receive_buff, ESP8266_RX_BUF_SIZE);
     }
@@ -202,7 +210,7 @@ uint8_t ESP8266_send_at_cmd(unsigned char *cmd, unsigned char len, const char *a
 
     if(uart_init.esp8266_buffer.receive_start == 1U)
     {
-        if (strstr((const char *)uart_init.esp8266_buffer.receive_buff, ack))
+        if (strstr((const char *)uart_init.esp8266_buffer.process_buff, ack))
         {
             ESP8266_uart_rx_clear(uart_init.esp8266_buffer.receive_count);
             return ESP8266_EOK;
@@ -537,7 +545,7 @@ static uint8_t parse_json_msg(uint8_t *json_msg, uint16_t json_len)
 uint8_t ESP8266_receive_msg(const char *topic, uint8_t *msg_data, uint16_t msg_len)
 {
     uint8_t retval = ESP8266_ERROR;
-    char *rx_buff = (char *)uart_init.esp8266_buffer.receive_buff;
+    char *rx_buff = (char *)uart_init.esp8266_buffer.process_buff;
     MQTT_MsgType_t msg_type = MQTT_MSG_TYPE_NORMAL; // 默认为普通消息
     char *ptr;
     char *topic_start;

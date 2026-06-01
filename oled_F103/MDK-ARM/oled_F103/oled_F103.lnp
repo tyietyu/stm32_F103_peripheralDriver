@@ -4,6 +4,7 @@
 "oled_f103\gpio.o"
 "oled_f103\dma.o"
 "oled_f103\i2c.o"
+"oled_f103\spi.o"
 "oled_f103\tim.o"
 "oled_f103\usart.o"
 "oled_f103\stm32f1xx_it.o"
@@ -20,6 +21,7 @@
 "oled_f103\stm32f1xx_hal_flash.o"
 "oled_f103\stm32f1xx_hal_flash_ex.o"
 "oled_f103\stm32f1xx_hal_exti.o"
+"oled_f103\stm32f1xx_hal_spi.o"
 "oled_f103\stm32f1xx_hal_tim.o"
 "oled_f103\stm32f1xx_hal_tim_ex.o"
 "oled_f103\stm32f1xx_hal_uart.o"
@@ -33,6 +35,10 @@
 "oled_f103\ee.o"
 "oled_f103\md5.o"
 "oled_f103\otadriver.o"
+"oled_f103\spi_flash.o"
+"oled_f103\ota_storage.o"
+"oled_f103\ota_verify.o"
+"oled_f103\crc32.o"
 --library_type=microlib --strict --scatter "oled_F103\oled_F103.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
