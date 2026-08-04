@@ -15,9 +15,14 @@
 #define _SQRT3 1.732050808f
 #define _1_SQRT3 0.577350269f
 #define _2_SQRT3 1.154700538f
+#define _2_3 0.666666667f
 
 #define _constrain(amt, low, high) \
   ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
+
+static float _sensorAngleToElectricalAngle(FOC_T *hfoc, float sensor_angle);
+static float _getEffectiveVoltageLimit(FOC_T *hfoc);
+static void _setPwm(FOC_T *hfoc, float Ua, float Ub, float Uc);
 
 // 归一化角度到 [0, 2PI]
 float _normalizeAngle(float angle)
@@ -35,22 +40,141 @@ float _openloop_electricalAngle(float shaft_angle, int pole_pairs)
 // 求解电角度（闭环）
 float _closeloop_electricalAngle(FOC_T *hfoc)
 {
-  return _normalizeAngle((float)(hfoc->dir * hfoc->pp) * hfoc->Sensor_GetOnceAngle() - hfoc->zero_electric_angle);
+  return _sensorAngleToElectricalAngle(hfoc, hfoc->Sensor_GetOnceAngle());
 }
 
-void _setPwm(FOC_T *hfoc, float Ua, float Ub, float Uc)
+static float _sensorAngleToElectricalAngle(FOC_T *hfoc, float sensor_angle)
 {
-  Ua = _constrain(Ua, 0.0f, hfoc->voltage_limit);
-  Ub = _constrain(Ub, 0.0f, hfoc->voltage_limit);
-  Uc = _constrain(Uc, 0.0f, hfoc->voltage_limit);
+  return _normalizeAngle((float)(hfoc->dir * hfoc->pp) * sensor_angle - hfoc->zero_electric_angle);
+}
 
-  float dc_a = _constrain(Ua / hfoc->voltage_power_supply, 0.0f, 1.0f);
-  float dc_b = _constrain(Ub / hfoc->voltage_power_supply, 0.0f, 1.0f);
-  float dc_c = _constrain(Uc / hfoc->voltage_power_supply, 0.0f, 1.0f);
+static float _getEffectiveVoltageLimit(FOC_T *hfoc)
+{
+  float modulation_limit;
+  float supply_limit;
+  float limit;
 
-  __HAL_TIM_SET_COMPARE(hfoc->tim, TIM_CHANNEL_1, dc_a * hfoc->pwm_period);
-  __HAL_TIM_SET_COMPARE(hfoc->tim, TIM_CHANNEL_2, dc_b * hfoc->pwm_period);
-  __HAL_TIM_SET_COMPARE(hfoc->tim, TIM_CHANNEL_3, dc_c * hfoc->pwm_period);
+  if ((hfoc == NULL) || (hfoc->voltage_power_supply <= 0.0f) ||
+      (hfoc->pwm_period <= 0.0f))
+  {
+    return 0.0f;
+  }
+
+  supply_limit = hfoc->voltage_power_supply / 2.0f;
+  modulation_limit = hfoc->voltage_power_supply *
+                     ((float)(PWM_MAX_COMPARE - PWM_MIN_COMPARE) /
+                      hfoc->pwm_period) / _SQRT3;
+  if (modulation_limit < supply_limit)
+  {
+    supply_limit = modulation_limit;
+  }
+  limit = hfoc->voltage_limit;
+  if (limit <= 0.0f)
+  {
+    return 0.0f;
+  }
+
+  return (limit < supply_limit) ? limit : supply_limit;
+}
+
+static void _setPwm(FOC_T *hfoc, float Ua, float Ub, float Uc)
+{
+  float allowed_span;
+  float common_mode;
+  float dc_a;
+  float dc_b;
+  float dc_c;
+  float dc_max;
+  float dc_min;
+  float max_dc;
+  float min_dc;
+  float offset_high;
+  float offset_low;
+  float scale;
+  float span;
+  uint32_t compare_a;
+  uint32_t compare_b;
+  uint32_t compare_c;
+  uint32_t max_compare;
+  uint32_t trigger_compare;
+  uint32_t trigger_earliest;
+
+  if ((hfoc == NULL) || (hfoc->tim == NULL) || (hfoc->voltage_power_supply <= 0.0f))
+  {
+    return;
+  }
+
+  Ua = _constrain(Ua, 0.0f, hfoc->voltage_power_supply);
+  Ub = _constrain(Ub, 0.0f, hfoc->voltage_power_supply);
+  Uc = _constrain(Uc, 0.0f, hfoc->voltage_power_supply);
+
+  dc_a = _constrain(Ua / hfoc->voltage_power_supply, 0.0f, 1.0f);
+  dc_b = _constrain(Ub / hfoc->voltage_power_supply, 0.0f, 1.0f);
+  dc_c = _constrain(Uc / hfoc->voltage_power_supply, 0.0f, 1.0f);
+
+  min_dc = (float)PWM_MIN_COMPARE / hfoc->pwm_period;
+  max_dc = (float)PWM_MAX_COMPARE / hfoc->pwm_period;
+  allowed_span = max_dc - min_dc;
+  dc_min = fminf(dc_a, fminf(dc_b, dc_c));
+  dc_max = fmaxf(dc_a, fmaxf(dc_b, dc_c));
+  span = dc_max - dc_min;
+
+  if (span > allowed_span)
+  {
+    scale = allowed_span / span;
+    dc_a = min_dc + (dc_a - dc_min) * scale;
+    dc_b = min_dc + (dc_b - dc_min) * scale;
+    dc_c = min_dc + (dc_c - dc_min) * scale;
+  }
+  else
+  {
+    offset_low = min_dc - dc_min;
+    offset_high = max_dc - dc_max;
+    common_mode = (offset_low + offset_high) * 0.5f;
+    dc_a += common_mode;
+    dc_b += common_mode;
+    dc_c += common_mode;
+  }
+
+  dc_a = _constrain(dc_a, min_dc, max_dc);
+  dc_b = _constrain(dc_b, min_dc, max_dc);
+  dc_c = _constrain(dc_c, min_dc, max_dc);
+  compare_a = (uint32_t)(dc_a * hfoc->pwm_period + 0.5f);
+  compare_b = (uint32_t)(dc_b * hfoc->pwm_period + 0.5f);
+  compare_c = (uint32_t)(dc_c * hfoc->pwm_period + 0.5f);
+  max_compare = compare_a;
+  if (compare_b > max_compare)
+  {
+    max_compare = compare_b;
+  }
+  if (compare_c > max_compare)
+  {
+    max_compare = compare_c;
+  }
+
+  trigger_earliest = max_compare + PWM_ADC_SEQUENCE_TICKS +
+                     PWM_ADC_END_MARGIN_TICKS;
+  if ((trigger_earliest > PWM_ADC_TRIGGER_LATEST) ||
+      (PWM_MIN_COMPARE >= PWM_MAX_COMPARE))
+  {
+    compare_a = PWM_MIN_COMPARE;
+    compare_b = PWM_MIN_COMPARE;
+    compare_c = PWM_MIN_COMPARE;
+    trigger_compare = PWM_ADC_TRIGGER_LATEST;
+    hfoc->current_sample_valid = 0U;
+  }
+  else
+  {
+    trigger_compare = trigger_earliest +
+                      (PWM_ADC_TRIGGER_LATEST - trigger_earliest) / 2U;
+    hfoc->current_sample_valid = 1U;
+  }
+
+  __HAL_TIM_SET_COMPARE(hfoc->tim, TIM_CHANNEL_1, compare_a);
+  __HAL_TIM_SET_COMPARE(hfoc->tim, TIM_CHANNEL_2, compare_b);
+  __HAL_TIM_SET_COMPARE(hfoc->tim, TIM_CHANNEL_3, compare_c);
+  __HAL_TIM_SET_COMPARE(hfoc->tim, TIM_CHANNEL_4, trigger_compare);
+  hfoc->adc_trigger_compare = trigger_compare;
 }
 
 /**
@@ -72,18 +196,31 @@ float FOC_CloseloopElectricalAngle(FOC_T *hfoc)
  */
 void FOC_SetTorque(FOC_T *hfoc, float Uq, float angle_el)
 {
-  Uq = _constrain(Uq, -hfoc->voltage_power_supply / 2.0f, hfoc->voltage_power_supply / 2.0f);
+  float limit;
+  float Ualpha;
+  float Ubeta;
+  float Ua;
+  float Ub;
+  float Uc;
+
+  if (hfoc == NULL)
+  {
+    return;
+  }
+
+  limit = _getEffectiveVoltageLimit(hfoc);
+  Uq = _constrain(Uq, -limit, limit);
   // float Ud = 0.0f;
   angle_el = _normalizeAngle(angle_el);
 
   // Park逆变换
-  float Ualpha = -Uq * sin(angle_el);
-  float Ubeta = Uq * cos(angle_el);
+  Ualpha = -Uq * sin(angle_el);
+  Ubeta = Uq * cos(angle_el);
 
   // Clark逆变换
-  float Ua = Ualpha + hfoc->voltage_power_supply / 2.0f;
-  float Ub = (sqrt(3) * Ubeta - Ualpha) / 2.0f + hfoc->voltage_power_supply / 2.0f;
-  float Uc = (-Ualpha - sqrt(3) * Ubeta) / 2.0f + hfoc->voltage_power_supply / 2.0f;
+  Ua = Ualpha + hfoc->voltage_power_supply / 2.0f;
+  Ub = (sqrt(3) * Ubeta - Ualpha) / 2.0f + hfoc->voltage_power_supply / 2.0f;
+  Uc = (-Ualpha - sqrt(3) * Ubeta) / 2.0f + hfoc->voltage_power_supply / 2.0f;
   _setPwm(hfoc, Ua, Ub, Uc);
 }
 
@@ -116,7 +253,15 @@ void FOC_Closeloop_Init(FOC_T *hfoc, TIM_HandleTypeDef *tim, float pwm_period, f
  * @param {float} v 电压值
  * @return {*}
  */
-void FOC_SetVoltageLimit(FOC_T *hfoc, float v) { hfoc->voltage_limit = v; }
+void FOC_SetVoltageLimit(FOC_T *hfoc, float v)
+{
+  if (hfoc == NULL)
+  {
+    return;
+  }
+
+  hfoc->voltage_limit = (v > 0.0f) ? v : 0.0f;
+}
 
 /**
  * @description: 编码器零位较准（需要配置传感器相关函数指针）
@@ -186,8 +331,13 @@ void FOC_Bind_SensorGetVelocity(FOC_T *hfoc, FUNC_SENSOR_GET_VELOCITY s)
  */
 void FOC_SensorUpdate(FOC_T *hfoc)
 {
+  if ((hfoc == NULL) || (hfoc->Sensor_Update == NULL) || (hfoc->Sensor_GetAngle == NULL))
+  {
+    return;
+  }
+
   hfoc->Sensor_Update();
-  hfoc->cached_angle_el = _closeloop_electricalAngle(hfoc);  // 缓存电角度
+  hfoc->cached_angle_el = _sensorAngleToElectricalAngle(hfoc, hfoc->Sensor_GetAngle());
 }
 
 /**
@@ -202,9 +352,9 @@ void FOC_Clarke(FOC_T *hfoc, float ia, float ib, float ic)
   hfoc->i_b = ib;
   hfoc->i_c = ic;
 
-  // Clarke变换: i_alpha = ia, i_beta = (ia + 2*ib) / sqrt(3)
-  hfoc->i_alpha = ia;
-  hfoc->i_beta = _1_SQRT3 * ia + _2_SQRT3 * ib;
+  // Clarke transform: three-phase samples abc -> alpha/beta
+  hfoc->i_alpha = _2_3 * (ia - 0.5f * ib - 0.5f * ic);
+  hfoc->i_beta = _1_SQRT3 * (ib - ic);
 }
 
 /**
@@ -233,24 +383,50 @@ void FOC_Park(FOC_T *hfoc, float angle_el)
  */
 void FOC_SetTorqueWithCurrent(FOC_T *hfoc, float Ud, float Uq, float angle_el)
 {
-  float limit = hfoc->voltage_power_supply / 2.0f;
-  Ud = _constrain(Ud, -limit, limit);
-  Uq = _constrain(Uq, -limit, limit);
+  float limit;
+  float magnitude;
+  float voltage_scale;
+  float sin_angle;
+  float cos_angle;
+  float Ualpha;
+  float Ubeta;
+  float Ua;
+  float Ub;
+  float Uc;
+
+  if (hfoc == NULL)
+  {
+    return;
+  }
+
+  limit = _getEffectiveVoltageLimit(hfoc);
+  magnitude = sqrtf(Ud * Ud + Uq * Uq);
+  if ((magnitude > limit) && (magnitude > 0.0f))
+  {
+    voltage_scale = limit / magnitude;
+    Ud *= voltage_scale;
+    Uq *= voltage_scale;
+  }
   angle_el = _normalizeAngle(angle_el);
 
-  float sin_angle = sinf(angle_el);
-  float cos_angle = cosf(angle_el);
+  sin_angle = sinf(angle_el);
+  cos_angle = cosf(angle_el);
 
   // Park逆变换
-  float Ualpha = Ud * cos_angle - Uq * sin_angle;
-  float Ubeta  = Ud * sin_angle + Uq * cos_angle;
+  Ualpha = Ud * cos_angle - Uq * sin_angle;
+  Ubeta  = Ud * sin_angle + Uq * cos_angle;
 
   // Clarke逆变换 (SPWM)
-  float Ua = Ualpha + hfoc->voltage_power_supply / 2.0f;
-  float Ub = (-Ualpha + _SQRT3 * Ubeta) / 2.0f + hfoc->voltage_power_supply / 2.0f;
-  float Uc = (-Ualpha - _SQRT3 * Ubeta) / 2.0f + hfoc->voltage_power_supply / 2.0f;
+  Ua = Ualpha + hfoc->voltage_power_supply / 2.0f;
+  Ub = (-Ualpha + _SQRT3 * Ubeta) / 2.0f + hfoc->voltage_power_supply / 2.0f;
+  Uc = (-Ualpha - _SQRT3 * Ubeta) / 2.0f + hfoc->voltage_power_supply / 2.0f;
 
   _setPwm(hfoc, Ua, Ub, Uc);
+}
+
+uint8_t FOC_IsCurrentSampleValid(const FOC_T *hfoc)
+{
+  return ((hfoc != NULL) && (hfoc->current_sample_valid != 0U)) ? 1U : 0U;
 }
 
 /**
@@ -270,7 +446,7 @@ void FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
   // 使用缓存的电角度（由速度环更新，避免在电流环中读取I2C）
   float angle_el = hfoc->cached_angle_el;
 
-  // Clarke变换: abc -> αβ
+  // Clarke transform: three-phase samples abc -> alpha/beta
   FOC_Clarke(hfoc, ia, ib, ic);
 
   // Park变换: αβ -> dq

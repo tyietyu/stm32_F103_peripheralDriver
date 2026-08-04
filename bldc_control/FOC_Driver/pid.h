@@ -25,6 +25,7 @@ typedef struct {
 void PID_Init(PID_T *pid, float P, float I, float D, float ramp, float limit);
 void PID_Set(PID_T *pid, float P, float I, float D, float ramp);
 void PID_SetFixedDt(PID_T *pid, float dt_s);
+void PID_Reset(PID_T *pid);
 float PID_Calc(PID_T *pid, float error);
 
 #endif

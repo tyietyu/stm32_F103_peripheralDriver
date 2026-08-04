@@ -66,6 +66,16 @@ void Error_Handler(void);
 #define VOLTAGE_DIVIDER_RATIO   8.0f 
 #define ADC_VOLTAGE_FACTOR      (ADC_REF_VOLTAGE / ADC_RESOLUTION * VOLTAGE_DIVIDER_RATIO)
 
+/* 21 MHz ADC: 3 channels x (15 sample + 12 conversion) cycles x 8 TIM clocks. */
+#define PWM_ADC_SEQUENCE_TICKS       648U
+#define PWM_ADC_END_MARGIN_TICKS     100U
+#define PWM_ADC_PEAK_BLANKING_TICKS  200U
+#define PWM_MIN_COMPARE              PWM_ADC_PEAK_BLANKING_TICKS
+#define PWM_MAX_COMPARE              (PWM_PERIOD - PWM_ADC_SEQUENCE_TICKS - \
+                                      PWM_ADC_END_MARGIN_TICKS - \
+                                      PWM_ADC_PEAK_BLANKING_TICKS)
+#define PWM_ADC_TRIGGER_LATEST       (PWM_PERIOD - PWM_ADC_PEAK_BLANKING_TICKS)
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -89,16 +99,10 @@ void Error_Handler(void);
 #define I_CHANNEL_V_GPIO_Port GPIOA
 #define I_CHANNEL_W_Pin GPIO_PIN_5
 #define I_CHANNEL_W_GPIO_Port GPIOA
-#define ZERO_U_Pin GPIO_PIN_0
-#define ZERO_U_GPIO_Port GPIOB
-#define ZERO_V_Pin GPIO_PIN_1
-#define ZERO_V_GPIO_Port GPIOB
 #define LED_Pin GPIO_PIN_2
 #define LED_GPIO_Port GPIOB
-#define SPI2_CS_Pin GPIO_PIN_11
+#define SPI2_CS_Pin GPIO_PIN_12
 #define SPI2_CS_GPIO_Port GPIOB
-#define ZERO_W_Pin GPIO_PIN_3
-#define ZERO_W_GPIO_Port GPIOB
 #define AS5600_SCL_Pin GPIO_PIN_6
 #define AS5600_SCL_GPIO_Port GPIOB
 #define AS5600_SDA_Pin GPIO_PIN_7

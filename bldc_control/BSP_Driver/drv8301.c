@@ -17,10 +17,11 @@
 #define DRV8301_CS_HIGH()   HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET)
 
 /* SPI Timeout */
-#define DRV8301_SPI_TIMEOUT     100
+#define DRV8301_SPI_TIMEOUT     100U
 
-/* Delay for CS timing (minimum 400ns) */
-#define DRV8301_CS_DELAY()      do { __NOP(); __NOP(); __NOP(); __NOP(); } while(0)
+/* Datasheet tSU_SCS/tHD_SCS are 50 ns; use at least 100 ns and verify on-board. */
+#define DRV8301_CS_DELAY_CYCLES ((SystemCoreClock / 10000000U) + 1U)
+#define DRV8301_CS_DELAY()      DRV8301_DelayCoreCycles(DRV8301_CS_DELAY_CYCLES)
 
 /*============================================================================*/
 /*                           Private Variables                                 */
@@ -33,24 +34,189 @@ static DRV8301_Handle_t drv8301_handle = {0};
 /*                           Private Functions                                 */
 /*============================================================================*/
 
-/**
- * @brief  SPI transmit and receive 16-bit data
- * @param  tx_data: data to transmit
- * @return received data
- */
-static uint16_t DRV8301_SPI_TransmitReceive(uint16_t tx_data)
+static void DRV8301_DelayCoreCycles(uint32_t cycles)
 {
-    uint16_t rx_data = 0;
+    while (cycles > 0U)
+    {
+        __NOP();
+        --cycles;
+    }
+}
+
+static DRV8301_Result_t DRV8301_RecordResult(DRV8301_Result_t result)
+{
+    drv8301_handle.last_result = result;
+    if ((result == DRV8301_ERROR_SPI) || (result == DRV8301_ERROR_FRAME) ||
+        (result == DRV8301_ERROR_ADDRESS))
+    {
+        drv8301_handle.communication_error = 1U;
+    }
+
+    return result;
+}
+
+static DRV8301_Result_t DRV8301_WaitSpiIdle(void)
+{
+    uint32_t tick_start;
+    tick_start = HAL_GetTick();
+    while (__HAL_SPI_GET_FLAG(drv8301_hspi, SPI_FLAG_BSY) != RESET)
+    {
+        if ((HAL_GetTick() - tick_start) >= DRV8301_SPI_TIMEOUT)
+        {
+            return DRV8301_ERROR_SPI;
+        }
+    }
+
+    return DRV8301_OK;
+}
+
+/**
+ * @brief  SPI transmit and receive one 16-bit frame
+ * @param  tx_data: data to transmit
+ * @param  rx_data: received data
+ * @return DRV8301 result
+ */
+static DRV8301_Result_t DRV8301_SPI_TransmitReceive(uint16_t tx_data, uint16_t *rx_data)
+{
+    HAL_StatusTypeDef status;
+    DRV8301_Result_t result;
+
+    if ((drv8301_hspi == NULL) || (rx_data == NULL))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    if (drv8301_hspi->Init.DataSize != SPI_DATASIZE_16BIT)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
 
     DRV8301_CS_LOW();
     DRV8301_CS_DELAY();
 
-    HAL_SPI_TransmitReceive(drv8301_hspi, (uint8_t *)&tx_data, (uint8_t *)&rx_data, 1, DRV8301_SPI_TIMEOUT);
+    status = HAL_SPI_TransmitReceive(drv8301_hspi, (uint8_t *)&tx_data, (uint8_t *)rx_data, 1U, DRV8301_SPI_TIMEOUT);
+    result = (status == HAL_OK) ? DRV8301_WaitSpiIdle() : DRV8301_ERROR_SPI;
 
     DRV8301_CS_DELAY();
     DRV8301_CS_HIGH();
 
-    return rx_data;
+    return DRV8301_RecordResult(result);
+}
+
+static DRV8301_Result_t DRV8301_CheckReadResponse(uint16_t response, uint8_t expected_addr)
+{
+    if (DRV8301_IS_FRAME_ERROR(response))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_FRAME);
+    }
+
+    if (DRV8301_GET_ADDR(response) != (expected_addr & 0x0FU))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_ADDRESS);
+    }
+
+    return DRV8301_RecordResult(DRV8301_OK);
+}
+
+static DRV8301_Result_t DRV8301_ReadRegChecked(uint8_t addr, uint16_t *data)
+{
+    uint16_t cmd;
+    uint16_t rx_data;
+    DRV8301_Result_t result;
+
+    if ((data == NULL) || (addr > DRV8301_REG_CTRL2))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    cmd = DRV8301_READ_CMD(addr);
+    rx_data = 0U;
+
+    /* First read sends command, returns previous data */
+    result = DRV8301_SPI_TransmitReceive(cmd, &rx_data);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    /* Meet tHI_SCS before starting the response frame. */
+    DRV8301_CS_DELAY();
+
+    /* Second read returns actual register data */
+    result = DRV8301_SPI_TransmitReceive(cmd, &rx_data);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    result = DRV8301_CheckReadResponse(rx_data, addr);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    *data = DRV8301_GET_DATA(rx_data);
+    return DRV8301_RecordResult(DRV8301_OK);
+}
+
+static DRV8301_Result_t DRV8301_WriteRegChecked(uint8_t addr, uint16_t data)
+{
+    uint16_t cmd;
+    uint16_t rx_data;
+
+    if ((addr != DRV8301_REG_CTRL1) && (addr != DRV8301_REG_CTRL2))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    cmd = DRV8301_WRITE_CMD(addr, data);
+    rx_data = 0U;
+
+    /* SDO belongs to the previous frame; current write is verified separately. */
+    return DRV8301_SPI_TransmitReceive(cmd, &rx_data);
+}
+
+static DRV8301_Result_t DRV8301_WriteRegVerified(uint8_t addr, uint16_t data)
+{
+    uint16_t readback;
+    DRV8301_Result_t result;
+
+    result = DRV8301_WriteRegChecked(addr, data);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    result = DRV8301_ReadRegChecked(addr, &readback);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    if (readback != (data & DRV8301_DATA_MASK))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_VERIFY);
+    }
+
+    return DRV8301_RecordResult(DRV8301_OK);
+}
+
+static void DRV8301_AppendFaultString(char *buf, uint16_t buf_size, const char *fault)
+{
+    size_t used;
+
+    if ((buf == NULL) || (fault == NULL) || (buf_size == 0U))
+    {
+        return;
+    }
+
+    used = strlen(buf);
+    if (used >= (size_t)(buf_size - 1U))
+    {
+        return;
+    }
+
+    strncat(buf, fault, (size_t)buf_size - used - 1U);
 }
 
 /*============================================================================*/
@@ -60,120 +226,197 @@ static uint16_t DRV8301_SPI_TransmitReceive(uint16_t tx_data)
 /**
  * @brief  Read DRV8301 register
  * @param  addr: register address (0x00-0x03)
- * @return register value (11-bit data)
+ * @param  data: register value output (11-bit data)
+ * @return DRV8301 result
  */
-uint16_t DRV8301_ReadReg(uint8_t addr)
+DRV8301_Result_t DRV8301_ReadReg(uint8_t addr, uint16_t *data)
 {
-    uint16_t cmd = DRV8301_READ_CMD(addr);
-
-    /* First read sends command, returns previous data */
-    DRV8301_SPI_TransmitReceive(cmd);
-
-    /* Short delay between transactions */
-    DRV8301_CS_DELAY();
-
-    /* Second read returns actual register data */
-    uint16_t rx_data = DRV8301_SPI_TransmitReceive(cmd);
-
-    return DRV8301_GET_DATA(rx_data);
+    return DRV8301_ReadRegChecked(addr, data);
 }
 
 /**
  * @brief  Write DRV8301 register
  * @param  addr: register address (0x02-0x03, only control registers are writable)
  * @param  data: data to write (11-bit)
+ * @return DRV8301 result
  */
-void DRV8301_WriteReg(uint8_t addr, uint16_t data)
+DRV8301_Result_t DRV8301_WriteReg(uint8_t addr, uint16_t data)
 {
-    uint16_t cmd = DRV8301_WRITE_CMD(addr, data);
-    DRV8301_SPI_TransmitReceive(cmd);
+    return DRV8301_WriteRegVerified(addr, data);
 }
 
 /**
  * @brief  Read Status Register 1
- * @return Status Register 1 value
+ * @param  status: Status Register 1 output
+ * @return DRV8301 result
  */
-uint16_t DRV8301_ReadStatus1(void)
+DRV8301_Result_t DRV8301_ReadStatus1(uint16_t *status)
 {
-    uint16_t status = DRV8301_ReadReg(DRV8301_REG_STATUS1);
+    DRV8301_Result_t result;
 
-    /* Update handle */
-    drv8301_handle.status1 = *(DRV8301_StatusReg1_t *)&status;
+    if (status == NULL)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
 
-    return status;
+    result = DRV8301_ReadRegChecked(DRV8301_REG_STATUS1, status);
+    if (result == DRV8301_OK)
+    {
+        drv8301_handle.status1 = *status;
+    }
+
+    return result;
 }
 
 /**
  * @brief  Read Status Register 2
- * @return Status Register 2 value
+ * @param  status: Status Register 2 output
+ * @return DRV8301 result
  */
-uint16_t DRV8301_ReadStatus2(void)
+DRV8301_Result_t DRV8301_ReadStatus2(uint16_t *status)
 {
-    uint16_t status = DRV8301_ReadReg(DRV8301_REG_STATUS2);
+    DRV8301_Result_t result;
 
-    /* Update handle */
-    drv8301_handle.status2 = *(DRV8301_StatusReg2_t *)&status;
+    if (status == NULL)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
 
-    return status;
+    result = DRV8301_ReadRegChecked(DRV8301_REG_STATUS2, status);
+    if (result == DRV8301_OK)
+    {
+        drv8301_handle.status2 = *status;
+    }
+
+    return result;
 }
 
 /**
  * @brief  Read Control Register 1
- * @return Control Register 1 value
+ * @param  ctrl: Control Register 1 output
+ * @return DRV8301 result
  */
-uint16_t DRV8301_ReadCtrl1(void)
+DRV8301_Result_t DRV8301_ReadCtrl1(uint16_t *ctrl)
 {
-    uint16_t ctrl = DRV8301_ReadReg(DRV8301_REG_CTRL1);
+    DRV8301_Result_t result;
 
-    /* Update handle */
-    drv8301_handle.ctrl1 = *(DRV8301_CtrlReg1_t *)&ctrl;
+    if (ctrl == NULL)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
 
-    return ctrl;
+    result = DRV8301_ReadRegChecked(DRV8301_REG_CTRL1, ctrl);
+    if (result == DRV8301_OK)
+    {
+        drv8301_handle.ctrl1 = *ctrl;
+    }
+
+    return result;
 }
 
 /**
  * @brief  Read Control Register 2
- * @return Control Register 2 value
+ * @param  ctrl: Control Register 2 output
+ * @return DRV8301 result
  */
-uint16_t DRV8301_ReadCtrl2(void)
+DRV8301_Result_t DRV8301_ReadCtrl2(uint16_t *ctrl)
 {
-    uint16_t ctrl = DRV8301_ReadReg(DRV8301_REG_CTRL2);
+    DRV8301_Result_t result;
 
-    /* Update handle */
-    drv8301_handle.ctrl2 = *(DRV8301_CtrlReg2_t *)&ctrl;
+    if (ctrl == NULL)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
 
-    return ctrl;
+    result = DRV8301_ReadRegChecked(DRV8301_REG_CTRL2, ctrl);
+    if (result == DRV8301_OK)
+    {
+        drv8301_handle.ctrl2 = *ctrl;
+    }
+
+    return result;
 }
 
 /**
  * @brief  Check if DRV8301 has fault
- * @return 1: has fault, 0: no fault
+ * @param  has_fault: 1 if fault is active, otherwise 0
+ * @return DRV8301 result
  */
-uint8_t DRV8301_HasFault(void)
+DRV8301_Result_t DRV8301_HasFault(uint8_t *has_fault)
 {
-    uint16_t status = DRV8301_ReadStatus1();
-    return (status & DRV8301_SR1_FAULT) ? 1 : 0;
+    uint16_t status;
+    DRV8301_Result_t result;
+
+    if (has_fault == NULL)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadStatus1(&status);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    *has_fault = ((status & DRV8301_SR1_FAULT) != 0U) ? 1U : 0U;
+    return DRV8301_OK;
 }
 
 /**
  * @brief  Clear fault flags by reading status registers
+ * @return DRV8301 result
  */
-void DRV8301_ClearFaults(void)
+DRV8301_Result_t DRV8301_ClearFaults(void)
 {
+    uint16_t status1;
+    uint16_t status2;
+    uint16_t ctrl1;
+    DRV8301_Result_t result;
+
     /* Reading status registers clears the fault flags */
-    DRV8301_ReadStatus1();
-    DRV8301_ReadStatus2();
+    result = DRV8301_ReadStatus1(&status1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+    result = DRV8301_ReadStatus2(&status2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
 
     /* Also perform gate reset if needed */
-    uint16_t ctrl1 = DRV8301_ReadCtrl1();
+    result = DRV8301_ReadCtrl1(&ctrl1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
     ctrl1 |= DRV8301_CR1_GATE_RESET_LATCHED;
-    DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
+    result = DRV8301_WriteRegChecked(DRV8301_REG_CTRL1, ctrl1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
 
     HAL_Delay(1);
 
     /* Clear gate reset bit */
     ctrl1 &= ~DRV8301_CR1_GATE_RESET_Msk;
-    DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
+    result = DRV8301_WriteRegVerified(DRV8301_REG_CTRL1, ctrl1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    result = DRV8301_ReadStatus1(&status1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    return ((status1 & DRV8301_SR1_FAULT) == 0U)
+               ? DRV8301_RecordResult(DRV8301_OK)
+               : DRV8301_RecordResult(DRV8301_ERROR_FAULT);
 }
 
 /**
@@ -183,12 +426,26 @@ void DRV8301_ClearFaults(void)
  *         - DRV8301_CR1_GATE_CURRENT_0_7A
  *         - DRV8301_CR1_GATE_CURRENT_0_25A
  */
-void DRV8301_SetGateCurrent(uint16_t current)
+DRV8301_Result_t DRV8301_SetGateCurrent(uint16_t current)
 {
-    uint16_t ctrl1 = DRV8301_ReadCtrl1();
+    uint16_t ctrl1;
+    DRV8301_Result_t result;
+
+    if ((current != DRV8301_CR1_GATE_CURRENT_1_7A) &&
+        (current != DRV8301_CR1_GATE_CURRENT_0_7A) &&
+        (current != DRV8301_CR1_GATE_CURRENT_0_25A))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadCtrl1(&ctrl1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
     ctrl1 &= ~DRV8301_CR1_GATE_CURRENT_Msk;
     ctrl1 |= (current & DRV8301_CR1_GATE_CURRENT_Msk);
-    DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
+    return DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
 }
 
 /**
@@ -197,12 +454,25 @@ void DRV8301_SetGateCurrent(uint16_t current)
  *         - DRV8301_CR1_PWM_MODE_6PWM
  *         - DRV8301_CR1_PWM_MODE_3PWM
  */
-void DRV8301_SetPWMMode(uint16_t mode)
+DRV8301_Result_t DRV8301_SetPWMMode(uint16_t mode)
 {
-    uint16_t ctrl1 = DRV8301_ReadCtrl1();
+    uint16_t ctrl1;
+    DRV8301_Result_t result;
+
+    if ((mode != DRV8301_CR1_PWM_MODE_6PWM) &&
+        (mode != DRV8301_CR1_PWM_MODE_3PWM))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadCtrl1(&ctrl1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
     ctrl1 &= ~DRV8301_CR1_PWM_MODE_Msk;
     ctrl1 |= (mode & DRV8301_CR1_PWM_MODE_Msk);
-    DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
+    return DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
 }
 
 /**
@@ -213,24 +483,51 @@ void DRV8301_SetPWMMode(uint16_t mode)
  *         - DRV8301_CR1_OC_MODE_REPORT
  *         - DRV8301_CR1_OC_MODE_DISABLE
  */
-void DRV8301_SetOCMode(uint16_t mode)
+DRV8301_Result_t DRV8301_SetOCMode(uint16_t mode)
 {
-    uint16_t ctrl1 = DRV8301_ReadCtrl1();
+    uint16_t ctrl1;
+    DRV8301_Result_t result;
+
+    if ((mode != DRV8301_CR1_OC_MODE_LIMIT) &&
+        (mode != DRV8301_CR1_OC_MODE_LATCH_SD) &&
+        (mode != DRV8301_CR1_OC_MODE_REPORT) &&
+        (mode != DRV8301_CR1_OC_MODE_DISABLE))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadCtrl1(&ctrl1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
     ctrl1 &= ~DRV8301_CR1_OC_MODE_Msk;
     ctrl1 |= (mode & DRV8301_CR1_OC_MODE_Msk);
-    DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
+    return DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
 }
 
 /**
  * @brief  Set overcurrent threshold
  * @param  threshold: OC threshold value (0x00-0x1F)
  */
-void DRV8301_SetOCThreshold(uint8_t threshold)
+DRV8301_Result_t DRV8301_SetOCThreshold(uint8_t threshold)
 {
-    uint16_t ctrl1 = DRV8301_ReadCtrl1();
+    uint16_t ctrl1;
+    DRV8301_Result_t result;
+
+    if (threshold > DRV8301_CR1_OC_ADJ_SET_Msk)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadCtrl1(&ctrl1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
     ctrl1 &= ~DRV8301_CR1_OC_ADJ_SET_Msk;
     ctrl1 |= (threshold & DRV8301_CR1_OC_ADJ_SET_Msk);
-    DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
+    return DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
 }
 
 /**
@@ -241,23 +538,48 @@ void DRV8301_SetOCThreshold(uint8_t threshold)
  *         - DRV8301_CR2_GAIN_40
  *         - DRV8301_CR2_GAIN_80
  */
-void DRV8301_SetGain(uint16_t gain)
+DRV8301_Result_t DRV8301_SetGain(uint16_t gain)
 {
-    uint16_t ctrl2 = DRV8301_ReadCtrl2();
+    uint16_t ctrl2;
+    DRV8301_Result_t result;
+
+    if ((gain != DRV8301_CR2_GAIN_10) && (gain != DRV8301_CR2_GAIN_20) &&
+        (gain != DRV8301_CR2_GAIN_40) && (gain != DRV8301_CR2_GAIN_80))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadCtrl2(&ctrl2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
     ctrl2 &= ~DRV8301_CR2_GAIN_Msk;
     ctrl2 |= (gain & DRV8301_CR2_GAIN_Msk);
-    DRV8301_WriteReg(DRV8301_REG_CTRL2, ctrl2);
+    return DRV8301_WriteReg(DRV8301_REG_CTRL2, ctrl2);
 }
 
 /**
  * @brief  Enable/Disable DC calibration mode
  * @param  enable: 1 = enable calibration, 0 = normal mode
  */
-void DRV8301_SetDCCalMode(uint8_t enable)
+DRV8301_Result_t DRV8301_SetDCCalMode(uint8_t enable)
 {
-    uint16_t ctrl2 = DRV8301_ReadCtrl2();
+    uint16_t ctrl2;
+    DRV8301_Result_t result;
 
-    if (enable)
+    if (enable > 1U)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadCtrl2(&ctrl2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    if (enable != 0U)
     {
         ctrl2 |= DRV8301_CR2_DC_CAL_CH1_CAL | DRV8301_CR2_DC_CAL_CH2_CAL;
     }
@@ -266,7 +588,7 @@ void DRV8301_SetDCCalMode(uint8_t enable)
         ctrl2 &= ~(DRV8301_CR2_DC_CAL_CH1_Msk | DRV8301_CR2_DC_CAL_CH2_Msk);
     }
 
-    DRV8301_WriteReg(DRV8301_REG_CTRL2, ctrl2);
+    return DRV8301_WriteReg(DRV8301_REG_CTRL2, ctrl2);
 }
 
 /**
@@ -276,41 +598,89 @@ void DRV8301_SetDCCalMode(uint8_t enable)
  *         - DRV8301_CR2_OCTW_MODE_OT_ONLY
  *         - DRV8301_CR2_OCTW_MODE_OC_ONLY
  */
-void DRV8301_SetOCTWMode(uint16_t mode)
+DRV8301_Result_t DRV8301_SetOCTWMode(uint16_t mode)
 {
-    uint16_t ctrl2 = DRV8301_ReadCtrl2();
+    uint16_t ctrl2;
+    DRV8301_Result_t result;
+
+    if ((mode != DRV8301_CR2_OCTW_MODE_OT_OC) &&
+        (mode != DRV8301_CR2_OCTW_MODE_OT_ONLY) &&
+        (mode != DRV8301_CR2_OCTW_MODE_OC_ONLY))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadCtrl2(&ctrl2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
     ctrl2 &= ~DRV8301_CR2_OCTW_MODE_Msk;
     ctrl2 |= (mode & DRV8301_CR2_OCTW_MODE_Msk);
-    DRV8301_WriteReg(DRV8301_REG_CTRL2, ctrl2);
+    return DRV8301_WriteReg(DRV8301_REG_CTRL2, ctrl2);
 }
 
 /**
  * @brief  Get device ID
- * @return device ID (should be 0x01 for DRV8301)
+ * @param  device_id: Device ID output
+ * @return DRV8301 result
  */
-uint8_t DRV8301_GetDeviceID(void)
+DRV8301_Result_t DRV8301_GetDeviceID(uint8_t *device_id)
 {
-    uint16_t status2 = DRV8301_ReadStatus2();
-    return (status2 & DRV8301_SR2_DEVICE_ID_Msk);
+    uint16_t status2;
+    DRV8301_Result_t result;
+
+    if (device_id == NULL)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadStatus2(&status2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    *device_id = (uint8_t)((status2 & DRV8301_SR2_DEVICE_ID_Msk) >>
+                           DRV8301_SR2_DEVICE_ID_Pos);
+    return DRV8301_OK;
 }
 
 /**
  * @brief  Get current amplifier gain value
- * @return gain value (10.0, 20.0, 40.0, or 80.0)
+ * @param  gain_value: gain value output (10.0, 20.0, 40.0, or 80.0)
+ * @return DRV8301 result
  */
-float DRV8301_GetGainValue(void)
+DRV8301_Result_t DRV8301_GetGainValue(float *gain_value)
 {
-    uint16_t ctrl2 = DRV8301_ReadCtrl2();
-    uint8_t gain_setting = (ctrl2 & DRV8301_CR2_GAIN_Msk) >> DRV8301_CR2_GAIN_Pos;
+    uint16_t ctrl2;
+    uint8_t gain_setting;
+    DRV8301_Result_t result;
+
+    if (gain_value == NULL)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    result = DRV8301_ReadCtrl2(&ctrl2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    gain_setting = (uint8_t)((ctrl2 & DRV8301_CR2_GAIN_Msk) >>
+                             DRV8301_CR2_GAIN_Pos);
 
     switch (gain_setting)
     {
-        case 0: return DRV8301_GAIN_VALUE_10;
-        case 1: return DRV8301_GAIN_VALUE_20;
-        case 2: return DRV8301_GAIN_VALUE_40;
-        case 3: return DRV8301_GAIN_VALUE_80;
-        default: return DRV8301_GAIN_VALUE_10;
+        case 0U: *gain_value = DRV8301_GAIN_VALUE_10; break;
+        case 1U: *gain_value = DRV8301_GAIN_VALUE_20; break;
+        case 2U: *gain_value = DRV8301_GAIN_VALUE_40; break;
+        case 3U: *gain_value = DRV8301_GAIN_VALUE_80; break;
+        default: return DRV8301_RecordResult(DRV8301_ERROR_VERIFY);
     }
+
+    return DRV8301_OK;
 }
 
 /**
@@ -328,46 +698,71 @@ DRV8301_Handle_t* DRV8301_GetHandle(void)
  */
 void DRV8301_GetFaultString(uint16_t status1, char *buf, uint16_t buf_size)
 {
+    if ((buf == NULL) || (buf_size == 0U))
+    {
+        return;
+    }
+
     buf[0] = '\0';
 
     if (status1 & DRV8301_SR1_FAULT)
     {
         if (status1 & DRV8301_SR1_GVDD_UV)
-            strncat(buf, "GVDD_UV ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "GVDD_UV ");
         if (status1 & DRV8301_SR1_PVDD_UV)
-            strncat(buf, "PVDD_UV ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "PVDD_UV ");
         if (status1 & DRV8301_SR1_OTSD)
-            strncat(buf, "OTSD ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "OTSD ");
         if (status1 & DRV8301_SR1_OTW)
-            strncat(buf, "OTW ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "OTW ");
         if (status1 & DRV8301_SR1_FETHA_OC)
-            strncat(buf, "FETHA_OC ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "FETHA_OC ");
         if (status1 & DRV8301_SR1_FETLA_OC)
-            strncat(buf, "FETLA_OC ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "FETLA_OC ");
         if (status1 & DRV8301_SR1_FETHB_OC)
-            strncat(buf, "FETHB_OC ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "FETHB_OC ");
         if (status1 & DRV8301_SR1_FETLB_OC)
-            strncat(buf, "FETLB_OC ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "FETLB_OC ");
         if (status1 & DRV8301_SR1_FETHC_OC)
-            strncat(buf, "FETHC_OC ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "FETHC_OC ");
         if (status1 & DRV8301_SR1_FETLC_OC)
-            strncat(buf, "FETLC_OC ", buf_size - strlen(buf) - 1);
+            DRV8301_AppendFaultString(buf, buf_size, "FETLC_OC ");
+        if (buf[0] == '\0')
+            DRV8301_AppendFaultString(buf, buf_size, "FAULT ");
     }
     else
     {
         strncpy(buf, "No Fault", buf_size - 1);
+        buf[buf_size - 1] = '\0';
     }
 }
 
 /**
  * @brief  Read all registers and update handle
+ * @return DRV8301 result
  */
-void DRV8301_UpdateAll(void)
+DRV8301_Result_t DRV8301_UpdateAll(void)
 {
-    DRV8301_ReadStatus1();
-    DRV8301_ReadStatus2();
-    DRV8301_ReadCtrl1();
-    DRV8301_ReadCtrl2();
+    uint16_t value;
+    DRV8301_Result_t result;
+
+    result = DRV8301_ReadStatus1(&value);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+    result = DRV8301_ReadStatus2(&value);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+    result = DRV8301_ReadCtrl1(&value);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    return DRV8301_ReadCtrl2(&value);
 }
 
 /**
@@ -380,57 +775,154 @@ void DRV8301_UpdateAll(void)
  * @param  gain: shunt amplifier gain setting
  * @param  octw_mode: overcurrent/overtemperature warning mode
  * @param  oc_toff: overcurrent off-time mode
- * @return 0: success, -1: failed
+ * @return DRV8301 result
  */
-int DRV8301_ConfigInit(SPI_HandleTypeDef *hspi, uint16_t gate_current, uint16_t pwm_mode,
-                           uint16_t oc_mode, uint8_t oc_threshold, uint16_t gain,
-                           uint16_t octw_mode, uint16_t oc_toff)
+DRV8301_Result_t DRV8301_ConfigInit(SPI_HandleTypeDef *hspi,
+                                    uint16_t gate_current,
+                                    uint16_t pwm_mode,
+                                    uint16_t oc_mode,
+                                    uint8_t oc_threshold,
+                                    uint16_t gain,
+                                    uint16_t octw_mode,
+                                    uint16_t oc_toff)
 {
-    if (hspi == NULL)
+    uint16_t status1;
+    uint16_t status2;
+    uint16_t ctrl1;
+    uint16_t ctrl2;
+    uint16_t read_ctrl1;
+    uint16_t read_ctrl2;
+    uint8_t device_id;
+    DRV8301_Result_t result;
+
+    if ((hspi == NULL) || (hspi->Init.DataSize != SPI_DATASIZE_16BIT))
     {
-        return -1;
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
     }
 
+    if (((gate_current != DRV8301_CR1_GATE_CURRENT_1_7A) &&
+         (gate_current != DRV8301_CR1_GATE_CURRENT_0_7A) &&
+         (gate_current != DRV8301_CR1_GATE_CURRENT_0_25A)) ||
+        ((pwm_mode != DRV8301_CR1_PWM_MODE_6PWM) &&
+         (pwm_mode != DRV8301_CR1_PWM_MODE_3PWM)) ||
+        ((oc_mode != DRV8301_CR1_OC_MODE_LIMIT) &&
+         (oc_mode != DRV8301_CR1_OC_MODE_LATCH_SD) &&
+         (oc_mode != DRV8301_CR1_OC_MODE_REPORT) &&
+         (oc_mode != DRV8301_CR1_OC_MODE_DISABLE)) ||
+        (oc_threshold > DRV8301_CR1_OC_ADJ_SET_Msk) ||
+        ((gain != DRV8301_CR2_GAIN_10) && (gain != DRV8301_CR2_GAIN_20) &&
+         (gain != DRV8301_CR2_GAIN_40) && (gain != DRV8301_CR2_GAIN_80)) ||
+        ((octw_mode != DRV8301_CR2_OCTW_MODE_OT_OC) &&
+         (octw_mode != DRV8301_CR2_OCTW_MODE_OT_ONLY) &&
+         (octw_mode != DRV8301_CR2_OCTW_MODE_OC_ONLY)) ||
+        ((oc_toff != DRV8301_CR2_OC_TOFF_CYCLE) &&
+         (oc_toff != DRV8301_CR2_OC_TOFF_OFFTIME)))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_PARAM);
+    }
+
+    memset(&drv8301_handle, 0, sizeof(drv8301_handle));
     drv8301_hspi = hspi;
 
-    /* Ensure CS is high initially */
     DRV8301_CS_HIGH();
+    /* Datasheet tSPI_READY is 5 ms typical and 10 ms maximum. */
     HAL_Delay(10);
 
-    /* Clear any existing faults */
-    DRV8301_ClearFaults();
+    result = DRV8301_GetDeviceID(&device_id);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+    if (device_id != DRV8301_DEVICE_ID_VALUE)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_DEVICE_ID);
+    }
+
+    result = DRV8301_ReadStatus1(&status1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+    result = DRV8301_ReadStatus2(&status2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    result = DRV8301_ClearFaults();
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
     HAL_Delay(1);
 
-    /* Configure Control Register 1 */
-    uint16_t ctrl1 = 0;
+    ctrl1 = 0U;
     ctrl1 |= (gate_current & DRV8301_CR1_GATE_CURRENT_Msk);
     ctrl1 |= DRV8301_CR1_GATE_RESET_NORMAL;
     ctrl1 |= (pwm_mode & DRV8301_CR1_PWM_MODE_Msk);
     ctrl1 |= (oc_mode & DRV8301_CR1_OC_MODE_Msk);
     ctrl1 |= (oc_threshold & DRV8301_CR1_OC_ADJ_SET_Msk);
 
-    DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
-    HAL_Delay(1);
+    result = DRV8301_WriteRegVerified(DRV8301_REG_CTRL1, ctrl1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
 
-    /* Configure Control Register 2 */
-    uint16_t ctrl2 = 0;
+    ctrl2 = 0U;
     ctrl2 |= (octw_mode & DRV8301_CR2_OCTW_MODE_Msk);
     ctrl2 |= (gain & DRV8301_CR2_GAIN_Msk);
     ctrl2 |= DRV8301_CR2_DC_CAL_CH1_NORMAL;
     ctrl2 |= DRV8301_CR2_DC_CAL_CH2_NORMAL;
     ctrl2 |= (oc_toff & DRV8301_CR2_OC_TOFF_Msk);
 
-    DRV8301_WriteReg(DRV8301_REG_CTRL2, ctrl2);
-    HAL_Delay(1);
+    result = DRV8301_WriteRegVerified(DRV8301_REG_CTRL2, ctrl2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
 
-    /* Verify configuration */
-    uint16_t read_ctrl1 = DRV8301_ReadCtrl1();
-    uint16_t read_ctrl2 = DRV8301_ReadCtrl2();
+    result = DRV8301_ReadCtrl1(&read_ctrl1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+    result = DRV8301_ReadCtrl2(&read_ctrl2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
 
     if ((read_ctrl1 != ctrl1) || (read_ctrl2 != ctrl2))
     {
-        return -1;
+        return DRV8301_RecordResult(DRV8301_ERROR_VERIFY);
     }
 
-    return 0;
+    result = DRV8301_GetDeviceID(&device_id);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+    if (device_id != DRV8301_DEVICE_ID_VALUE)
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_DEVICE_ID);
+    }
+
+    result = DRV8301_ReadStatus1(&status1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+    result = DRV8301_ReadStatus2(&status2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+    if (((status1 & DRV8301_SR1_FAULT) != 0U) ||
+        ((status2 & DRV8301_SR2_GVDD_OV) != 0U))
+    {
+        return DRV8301_RecordResult(DRV8301_ERROR_FAULT);
+    }
+
+    return DRV8301_RecordResult(DRV8301_OK);
 }

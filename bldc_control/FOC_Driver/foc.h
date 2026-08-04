@@ -7,6 +7,8 @@
  */
 #ifndef __FOC_H__
 #define __FOC_H__
+#include <stdint.h>
+
 #include "tim.h"
 
 // 获取编码器弧度值的函数指针
@@ -22,7 +24,7 @@ typedef struct
   float voltage_power_supply; // 电源电压
   float voltage_limit;        // 电压限制
   float shaft_angle;          // 轴角度（开环）
-  float open_loop_timestamp;  // 开环时间轴
+  uint32_t open_loop_timestamp;  // 开环时间轴(ms)
   float zero_electric_angle;  // 零位电角
   float u_alpha;
   float u_beta;
@@ -36,6 +38,8 @@ typedef struct
   float i_q;                  // q轴电流
   float i_a, i_b, i_c;        // 三相电流
   float cached_angle_el;      // 缓存的电角度（供电流环使用）
+  uint32_t adc_trigger_compare;
+  uint8_t current_sample_valid;
 
   int dir; // 方向
   int pp;  // 极对数
@@ -65,6 +69,7 @@ void FOC_SetTorqueWithCurrent(FOC_T *hfoc, float Ud, float Uq, float angle_el);
 void FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
                             float ia, float ib, float ic,
                             void *pid_id, void *pid_iq);
+uint8_t FOC_IsCurrentSampleValid(const FOC_T *hfoc);
 
 float _normalizeAngle(float angle);
 float _openloop_electricalAngle(float shaft_angle, int pole_pairs);

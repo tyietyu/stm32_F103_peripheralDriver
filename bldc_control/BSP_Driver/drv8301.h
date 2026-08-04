@@ -243,57 +243,25 @@ extern "C" {
 /*                         Type Definitions                                    */
 /*============================================================================*/
 
-/* Status Register 1 bit field structure */
-typedef struct {
-    uint16_t FETLC_OC  : 1;     /* Bit 0:  FET Low side C overcurrent */
-    uint16_t FETHC_OC  : 1;     /* Bit 1:  FET High side C overcurrent */
-    uint16_t FETLB_OC  : 1;     /* Bit 2:  FET Low side B overcurrent */
-    uint16_t FETHB_OC  : 1;     /* Bit 3:  FET High side B overcurrent */
-    uint16_t FETLA_OC  : 1;     /* Bit 4:  FET Low side A overcurrent */
-    uint16_t FETHA_OC  : 1;     /* Bit 5:  FET High side A overcurrent */
-    uint16_t OTW       : 1;     /* Bit 6:  Overtemperature warning */
-    uint16_t OTSD      : 1;     /* Bit 7:  Overtemperature shutdown */
-    uint16_t PVDD_UV   : 1;     /* Bit 8:  Charge pump undervoltage */
-    uint16_t GVDD_UV   : 1;     /* Bit 9:  Gate driver undervoltage */
-    uint16_t FAULT     : 1;     /* Bit 10: Fault indicator */
-    uint16_t Reserved  : 5;     /* Bit 15-11: Reserved */
-} DRV8301_StatusReg1_t;
-
-/* Status Register 2 bit field structure */
-typedef struct {
-    uint16_t DEVICE_ID : 4;     /* Bit 3-0: Device ID */
-    uint16_t Reserved1 : 3;     /* Bit 6-4: Reserved */
-    uint16_t GVDD_OV   : 1;     /* Bit 7:   Gate driver overvoltage */
-    uint16_t Reserved2 : 8;     /* Bit 15-8: Reserved */
-} DRV8301_StatusReg2_t;
-
-/* Control Register 1 bit field structure */
-typedef struct {
-    uint16_t OC_ADJ_SET   : 5;  /* Bit 4-0:  Overcurrent adjustment */
-    uint16_t OC_MODE      : 2;  /* Bit 6-5:  Overcurrent mode */
-    uint16_t PWM_MODE     : 1;  /* Bit 7:    PWM mode (0=6PWM, 1=3PWM) */
-    uint16_t GATE_RESET   : 1;  /* Bit 8:    Gate reset */
-    uint16_t GATE_CURRENT : 2;  /* Bit 10-9: Gate drive current */
-    uint16_t Reserved     : 5;  /* Bit 15-11: Reserved */
-} DRV8301_CtrlReg1_t;
-
-/* Control Register 2 bit field structure */
-typedef struct {
-    uint16_t Reserved1    : 4;  /* Bit 3-0:  Reserved */
-    uint16_t OC_TOFF      : 1;  /* Bit 4:    OC off-time mode */
-    uint16_t DC_CAL_CH2   : 1;  /* Bit 5:    DC calibration CH2 */
-    uint16_t DC_CAL_CH1   : 1;  /* Bit 6:    DC calibration CH1 */
-    uint16_t GAIN         : 2;  /* Bit 8-7:  Shunt amplifier gain */
-    uint16_t OCTW_MODE    : 2;  /* Bit 10-9: OC/OT warning mode */
-    uint16_t Reserved2    : 5;  /* Bit 15-11: Reserved */
-} DRV8301_CtrlReg2_t;
+typedef enum {
+    DRV8301_OK = 0,
+    DRV8301_ERROR_PARAM = -1,
+    DRV8301_ERROR_SPI = -2,
+    DRV8301_ERROR_FRAME = -3,
+    DRV8301_ERROR_ADDRESS = -4,
+    DRV8301_ERROR_VERIFY = -5,
+    DRV8301_ERROR_DEVICE_ID = -6,
+    DRV8301_ERROR_FAULT = -7
+} DRV8301_Result_t;
 
 /* DRV8301 handle structure */
 typedef struct {
-    DRV8301_StatusReg1_t status1;
-    DRV8301_StatusReg2_t status2;
-    DRV8301_CtrlReg1_t   ctrl1;
-    DRV8301_CtrlReg2_t   ctrl2;
+    uint16_t status1;
+    uint16_t status2;
+    uint16_t ctrl1;
+    uint16_t ctrl2;
+    DRV8301_Result_t last_result;
+    uint8_t communication_error;
 } DRV8301_Handle_t;
 
 /*============================================================================*/
@@ -312,41 +280,42 @@ typedef struct {
 
 /* Initialization */
 
-int DRV8301_ConfigInit(SPI_HandleTypeDef *hspi, uint16_t gate_current, uint16_t pwm_mode,
-                           uint16_t oc_mode, uint8_t oc_threshold, uint16_t gain,
-                           uint16_t octw_mode, uint16_t oc_toff);
+DRV8301_Result_t DRV8301_ConfigInit(SPI_HandleTypeDef *hspi, uint16_t gate_current,
+                                    uint16_t pwm_mode, uint16_t oc_mode,
+                                    uint8_t oc_threshold, uint16_t gain,
+                                    uint16_t octw_mode, uint16_t oc_toff);
 
 /* Register Read/Write */
-uint16_t DRV8301_ReadReg(uint8_t addr);
-void DRV8301_WriteReg(uint8_t addr, uint16_t data);
+DRV8301_Result_t DRV8301_ReadReg(uint8_t addr, uint16_t *data);
+DRV8301_Result_t DRV8301_WriteReg(uint8_t addr, uint16_t data);
 
 /* Status Register Access */
-uint16_t DRV8301_ReadStatus1(void);
-uint16_t DRV8301_ReadStatus2(void);
-uint16_t DRV8301_ReadCtrl1(void);
-uint16_t DRV8301_ReadCtrl2(void);
+DRV8301_Result_t DRV8301_ReadStatus1(uint16_t *status);
+DRV8301_Result_t DRV8301_ReadStatus2(uint16_t *status);
+DRV8301_Result_t DRV8301_ReadCtrl1(uint16_t *ctrl);
+DRV8301_Result_t DRV8301_ReadCtrl2(uint16_t *ctrl);
 
 /* Fault Management */
-uint8_t DRV8301_HasFault(void);
-void DRV8301_ClearFaults(void);
+DRV8301_Result_t DRV8301_HasFault(uint8_t *has_fault);
+DRV8301_Result_t DRV8301_ClearFaults(void);
 void DRV8301_GetFaultString(uint16_t status1, char *buf, uint16_t buf_size);
 
 /* Control Register 1 Configuration */
-void DRV8301_SetGateCurrent(uint16_t current);
-void DRV8301_SetPWMMode(uint16_t mode);
-void DRV8301_SetOCMode(uint16_t mode);
-void DRV8301_SetOCThreshold(uint8_t threshold);
+DRV8301_Result_t DRV8301_SetGateCurrent(uint16_t current);
+DRV8301_Result_t DRV8301_SetPWMMode(uint16_t mode);
+DRV8301_Result_t DRV8301_SetOCMode(uint16_t mode);
+DRV8301_Result_t DRV8301_SetOCThreshold(uint8_t threshold);
 
 /* Control Register 2 Configuration */
-void DRV8301_SetGain(uint16_t gain);
-void DRV8301_SetDCCalMode(uint8_t enable);
-void DRV8301_SetOCTWMode(uint16_t mode);
+DRV8301_Result_t DRV8301_SetGain(uint16_t gain);
+DRV8301_Result_t DRV8301_SetDCCalMode(uint8_t enable);
+DRV8301_Result_t DRV8301_SetOCTWMode(uint16_t mode);
 
 /* Utility Functions */
-uint8_t DRV8301_GetDeviceID(void);
-float DRV8301_GetGainValue(void);
+DRV8301_Result_t DRV8301_GetDeviceID(uint8_t *device_id);
+DRV8301_Result_t DRV8301_GetGainValue(float *gain_value);
 DRV8301_Handle_t* DRV8301_GetHandle(void);
-void DRV8301_UpdateAll(void);
+DRV8301_Result_t DRV8301_UpdateAll(void);
 
 #ifdef __cplusplus
 }

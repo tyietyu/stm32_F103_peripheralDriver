@@ -16,6 +16,7 @@ typedef struct {
 
 void LOWPASS_FILTER_Init(LOWPASS_FILTER_T *f, float time_const);
 float LOWPASS_FILTER_Calc(LOWPASS_FILTER_T *f, float x);
+float LOWPASS_FILTER_CalcWithDt(LOWPASS_FILTER_T *f, float x, float dt_s);
 
 #endif
 

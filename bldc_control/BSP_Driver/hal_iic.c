@@ -3,7 +3,7 @@
 #include "gpio.h"
 
 /**
- * @brief SDAÏßÊäÈëÄ£Ê½ÅäÖÃ
+ * @brief SDAçº¿è¾“å…¥æ¨¡å¼é…ç½®
  * @param None
  * @retval None
  */
@@ -19,7 +19,7 @@ void SDA_Input_Mode(iic_bus_t *bus)
 }
 
 /**
- * @brief SDAÏßÊä³öÄ£Ê½ÅäÖÃ
+ * @brief SDAçº¿è¾“å‡ºæ¨¡å¼é…ç½®
  * @param None
  * @retval None
  */
@@ -35,8 +35,8 @@ void SDA_Output_Mode(iic_bus_t *bus)
 }
 
 /**
- * @brief SDAÏßÊä³öÒ»¸öÎ»
- * @param val Êä³öµÄÊı¾İ
+ * @brief SDAçº¿è¾“å‡ºä¸€ä¸ªä½
+ * @param val è¾“å‡ºçš„æ•°æ®
  * @retval None
  */
 void SDA_Output(iic_bus_t *bus, uint16_t val)
@@ -52,8 +52,8 @@ void SDA_Output(iic_bus_t *bus, uint16_t val)
 }
 
 /**
- * @brief SCLÏßÊä³öÒ»¸öÎ»
- * @param val Êä³öµÄÊı¾İ
+ * @brief SCLçº¿è¾“å‡ºä¸€ä¸ªä½
+ * @param val è¾“å‡ºçš„æ•°æ®
  * @retval None
  */
 void SCL_Output(iic_bus_t *bus, uint16_t val)
@@ -69,9 +69,9 @@ void SCL_Output(iic_bus_t *bus, uint16_t val)
 }
 
 /**
- * @brief SDAÊäÈëÒ»Î»
+ * @brief SDAè¾“å…¥ä¸€ä½
  * @param None
- * @retval GPIO¶ÁÈëÒ»Î»
+ * @retval GPIOè¯»å…¥ä¸€ä½
  */
 uint8_t SDA_Input(iic_bus_t *bus)
 {
@@ -86,7 +86,7 @@ uint8_t SDA_Input(iic_bus_t *bus)
 }
 
 /**
- * @brief IICÆğÊ¼ĞÅºÅ
+ * @brief IICèµ·å§‹ä¿¡å·
  * @param None
  * @retval None
  */
@@ -103,7 +103,7 @@ void IICStart(iic_bus_t *bus)
 }
 
 /**
- * @brief IICÍ£Ö¹ĞÅºÅ
+ * @brief IICåœæ­¢ä¿¡å·
  * @param None
  * @retval None
  */
@@ -120,7 +120,7 @@ void IICStop(iic_bus_t *bus)
 }
 
 /**
- * @brief  IICµÈ´ıÈ·ÈÏĞÅºÅ
+ * @brief  IICç­‰å¾…ç¡®è®¤ä¿¡å·
  * @param None
  * @retval None
  */
@@ -147,7 +147,7 @@ unsigned char IICWaitAck(iic_bus_t *bus)
 }
 
 /**
- * @brief IIC·¢ËÍÈ·ÈÏĞÅºÅ
+ * @brief IICå‘é€ç¡®è®¤ä¿¡å·
  * @param None
  * @retval None
  */
@@ -162,7 +162,7 @@ void IICSendAck(iic_bus_t *bus)
 }
 
 /**
- * @brief IIC·¢ËÍ·ÇÈ·ÈÏĞÅºÅ
+ * @brief IICå‘é€éç¡®è®¤ä¿¡å·
  * @param None
  * @retval None
  */
@@ -177,8 +177,8 @@ void IICSendNotAck(iic_bus_t *bus)
 }
 
 /**
- * @brief IIC·¢ËÍÒ»¸ö×Ö½Ú
- * @param cSendByte ĞèÒª·¢ËÍµÄ×Ö½Ú
+ * @brief IICå‘é€ä¸€ä¸ªå­—èŠ‚
+ * @param cSendByte éœ€è¦å‘é€çš„å­—èŠ‚
  * @retval None
  */
 void IICSendByte(iic_bus_t *bus, unsigned char cSendByte)
@@ -200,9 +200,9 @@ void IICSendByte(iic_bus_t *bus, unsigned char cSendByte)
 }
 
 /**
- * @brief IIC½ÓÊÕÒ»¸ö×Ö½Ú
+ * @brief IICæ¥æ”¶ä¸€ä¸ªå­—èŠ‚
  * @param None
- * @retval ½ÓÊÕµ½µÄ×Ö½Ú
+ * @retval æ¥æ”¶åˆ°çš„å­—èŠ‚
  */
 unsigned char IICReceiveByte(iic_bus_t *bus)
 {
@@ -224,11 +224,11 @@ unsigned char IICReceiveByte(iic_bus_t *bus)
 }
 
 /**
- * @brief IICĞ´ÈëÒ»¸ö×Ö½Ú
- * @param daddr Éè±¸µØÖ·
- * @param reg ¼Ä´æÆ÷µØÖ·
- * @param data Ğ´ÈëµÄÊı¾İ
- * @retval ·µ»Ø0±íÊ¾³É¹¦£¬1±íÊ¾Ê§°Ü
+ * @brief IICå†™å…¥ä¸€ä¸ªå­—èŠ‚
+ * @param daddr è®¾å¤‡åœ°å€
+ * @param reg å¯„å­˜å™¨åœ°å€
+ * @param data å†™å…¥çš„æ•°æ®
+ * @retval è¿”å›0è¡¨ç¤ºæˆåŠŸï¼Œ1è¡¨ç¤ºå¤±è´¥
  */
 uint8_t IIC_Write_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t data)
 {
@@ -242,9 +242,17 @@ uint8_t IIC_Write_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t d
     }
 
     IICSendByte(bus, reg);
-    IICWaitAck(bus);
+    if (IICWaitAck(bus))
+    {
+        IICStop(bus);
+        return 1;
+    }
     IICSendByte(bus, data);
-    IICWaitAck(bus);
+    if (IICWaitAck(bus))
+    {
+        IICStop(bus);
+        return 1;
+    }
     IICStop(bus);
     delay_us(1);
 
@@ -252,12 +260,12 @@ uint8_t IIC_Write_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t d
 }
 
 /**
- * @brief IICĞ´Èë¶à¸ö×Ö½Ú
- * @param daddr Éè±¸µØÖ·
- * @param reg ¼Ä´æÆ÷µØÖ·
- * @param length Ğ´ÈëµÄ×Ö½ÚÊı
- * @param buff Ğ´ÈëµÄÊı¾İ»º³åÇø
- * @retval ·µ»Ø0±íÊ¾³É¹¦£¬1±íÊ¾Ê§°Ü
+ * @brief IICå†™å…¥å¤šä¸ªå­—èŠ‚
+ * @param daddr è®¾å¤‡åœ°å€
+ * @param reg å¯„å­˜å™¨åœ°å€
+ * @param length å†™å…¥çš„å­—èŠ‚æ•°
+ * @param buff å†™å…¥çš„æ•°æ®ç¼“å†²åŒº
+ * @retval è¿”å›0è¡¨ç¤ºæˆåŠŸï¼Œ1è¡¨ç¤ºå¤±è´¥
  */
 uint8_t IIC_Write_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t length, uint8_t buff[])
 {
@@ -271,11 +279,19 @@ uint8_t IIC_Write_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t
         return 1;
     }
     IICSendByte(bus, reg);
-    IICWaitAck(bus);
+    if (IICWaitAck(bus))
+    {
+        IICStop(bus);
+        return 1;
+    }
     for (i = 0; i < length; i++)
     {
         IICSendByte(bus, buff[i]);
-        IICWaitAck(bus);
+        if (IICWaitAck(bus))
+        {
+            IICStop(bus);
+            return 1;
+        }
     }
     IICStop(bus);
     delay_us(1);
@@ -283,10 +299,10 @@ uint8_t IIC_Write_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t
 }
 
 /**
- * @brief IIC¶ÁÈ¡Ò»¸ö×Ö½Ú
- * @param daddr Éè±¸µØÖ·
- * @param reg ¼Ä´æÆ÷µØÖ·
- * @retval ·µ»Ø¶ÁÈ¡µ½µÄ×Ö½Ú
+ * @brief IICè¯»å–ä¸€ä¸ªå­—èŠ‚
+ * @param daddr è®¾å¤‡åœ°å€
+ * @param reg å¯„å­˜å™¨åœ°å€
+ * @retval è¿”å›è¯»å–åˆ°çš„å­—èŠ‚
  */
 unsigned char IIC_Read_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg)
 {
@@ -307,12 +323,12 @@ unsigned char IIC_Read_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg)
 }
 
 /**
- * @brief IIC¶ÁÈ¡¶à¸ö×Ö½Ú
- * @param daddr Éè±¸µØÖ·
- * @param reg ¼Ä´æÆ÷µØÖ·
- * @param length ¶ÁÈ¡µÄ×Ö½ÚÊı
- * @param buff ´æ´¢¶ÁÈ¡Êı¾İµÄ»º³åÇø
- * @retval ·µ»Ø0±íÊ¾³É¹¦£¬1±íÊ¾Ê§°Ü
+ * @brief IICè¯»å–å¤šä¸ªå­—èŠ‚
+ * @param daddr è®¾å¤‡åœ°å€
+ * @param reg å¯„å­˜å™¨åœ°å€
+ * @param length è¯»å–çš„å­—èŠ‚æ•°
+ * @param buff å­˜å‚¨è¯»å–æ•°æ®çš„ç¼“å†²åŒº
+ * @retval è¿”å›0è¡¨ç¤ºæˆåŠŸï¼Œ1è¡¨ç¤ºå¤±è´¥
  */
 uint8_t IIC_Read_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t length, uint8_t buff[])
 {
@@ -325,11 +341,19 @@ uint8_t IIC_Read_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t 
         return 1;
     }
     IICSendByte(bus, reg);
-    IICWaitAck(bus);
+    if (IICWaitAck(bus))
+    {
+        IICStop(bus);
+        return 1;
+    }
 
     IICStart(bus);
     IICSendByte(bus, (daddr << 1) + 1);
-    IICWaitAck(bus);
+    if (IICWaitAck(bus))
+    {
+        IICStop(bus);
+        return 1;
+    }
     for (i = 0; i < length; i++)
     {
         buff[i] = IICReceiveByte(bus);
@@ -344,8 +368,8 @@ uint8_t IIC_Read_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t 
 }
 
 /**
- * @brief IIC×ÜÏß³õÊ¼»¯
- * @param bus IIC×ÜÏß½á¹¹ÌåÖ¸Õë
+ * @brief IICæ€»çº¿åˆå§‹åŒ–
+ * @param bus IICæ€»çº¿ç»“æ„ä½“æŒ‡é’ˆ
  * @retval None
  */
 uint8_t IICInit(iic_bus_t *bus)
@@ -365,8 +389,8 @@ uint8_t IICInit(iic_bus_t *bus)
 }
 
 /**
- * @brief IIC×ÜÏßÊÍ·Å
- * @param bus IIC×ÜÏß½á¹¹ÌåÖ¸Õë
+ * @brief IICæ€»çº¿é‡Šæ”¾
+ * @param bus IICæ€»çº¿ç»“æ„ä½“æŒ‡é’ˆ
  * @retval None
  */
 uint8_t IICDeinit(iic_bus_t *bus)

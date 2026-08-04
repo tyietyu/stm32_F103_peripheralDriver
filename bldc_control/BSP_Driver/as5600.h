@@ -11,19 +11,22 @@
 #define AS5600_READ_ADDR            ((AS5600_RAW_ADDR << 1) | 1)
 #define AS5600_RAW_ANGLE_REGISTER   0x0C
 
-#define AS5600_RESOLUTION           4096 // 12bit Resolution
+#define AS5600_RESOLUTION           4096U
+#define AS5600_RAW_MASK             (AS5600_RESOLUTION - 1U)
 
 typedef struct
 {
   iic_bus_t *i2c_ins;
   float prev_angle;
-  unsigned long prev_angle_ts;
+  uint32_t prev_angle_ts;
   float rotation_offset;
 
-  float vel_rotation_offset;       // 计算速度使用的圈数累加
-  float vel_prev_angle;            // 计算速度使用的角度
-  unsigned long vel_prev_angle_ts; // 计算速度使用的时间记录
+  float vel_rotation_offset;
+  float vel_prev_angle;
+  uint32_t vel_prev_angle_ts;
 
+  uint16_t error_count;
+  bool valid;
 } AS5600_T;
 
 int AS5600_Init(AS5600_T *a);
@@ -33,6 +36,6 @@ float AS5600_GetOnceAngle(AS5600_T *a);
 float AS5600_GetAngle(AS5600_T *a);
 void AS5600_Update(AS5600_T *a);
 float AS5600_GetVelocity(AS5600_T *a);
+bool AS5600_IsValid(AS5600_T *a);
 
 #endif
-

@@ -48,7 +48,7 @@ uint8_t delay_init(void)
 {
     /* usr HCLK */
     HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-    /* set fac ¸ù¾İHCLKµÄÖ÷ÆµÉèÖÃ */
+    /* set fac æ ¹æ®HCLKçš„ä¸»é¢‘è®¾ç½® */
     gs_fac_us = 168;
     return 0;
 }

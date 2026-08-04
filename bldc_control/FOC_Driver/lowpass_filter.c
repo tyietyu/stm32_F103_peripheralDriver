@@ -15,6 +15,23 @@ void LOWPASS_FILTER_Init(LOWPASS_FILTER_T *f, float time_const)
   f->prev_timestamp = HAL_GetTick();
 }
 
+float LOWPASS_FILTER_CalcWithDt(LOWPASS_FILTER_T *f, float x, float dt_s)
+{
+  float alpha;
+  float y;
+
+  if ((f == NULL) || (dt_s <= 0.0f))
+  {
+    return x;
+  }
+
+  alpha = f->tf / (f->tf + dt_s);
+  y = alpha * f->prev_y + (1.0f - alpha) * x;
+  f->prev_y = y;
+  f->prev_timestamp = HAL_GetTick();
+  return y;
+}
+
 float LOWPASS_FILTER_Calc(LOWPASS_FILTER_T *f, float x)
 {
   unsigned long timestamp = HAL_GetTick();
@@ -30,11 +47,7 @@ float LOWPASS_FILTER_Calc(LOWPASS_FILTER_T *f, float x)
     return x;
   }
 
-  float alpha = f->tf / (f->tf + delta);
-  float y = alpha * f->prev_y + (1.0f - alpha) * x;
-  f->prev_y = y;
-  f->prev_timestamp = timestamp;
-  return y;
+  return LOWPASS_FILTER_CalcWithDt(f, x, delta);
 }
 
 

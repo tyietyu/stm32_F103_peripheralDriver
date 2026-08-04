@@ -30,6 +30,19 @@ void PID_SetFixedDt(PID_T *pid, float dt_s)
   pid->fixed_dt = (dt_s > 0.0f) ? dt_s : 0.0f;
 }
 
+void PID_Reset(PID_T *pid)
+{
+  if (pid == NULL)
+  {
+    return;
+  }
+
+  pid->prev_error = 0.0f;
+  pid->prev_output = 0.0f;
+  pid->prev_integral = 0.0f;
+  pid->prev_timestamp = HAL_GetTick();
+}
+
 float PID_Calc(PID_T *pid, float error)
 {
   unsigned long timestamp_now = HAL_GetTick();
