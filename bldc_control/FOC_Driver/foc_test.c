@@ -11,6 +11,7 @@
 #define FOC_TEST_DEFAULT_TS  1e-3f
 #define FOC_TEST_MAX_TS      0.5f
 
+#if USE_SPEED_LOOP
 // 测试开环速度控制
 void Foc_TestOpenloopVelocity(FOC_T *hfoc, float target_velocity)
 {
@@ -62,6 +63,9 @@ void Foc_TestCloseloopVelocity(FOC_T *hfoc, LOWPASS_FILTER_T *filter,
                 FOC_CloseloopElectricalAngle(hfoc));
 }
 
+#endif
+
+#if USE_POSITION_LOOP
 // 测试闭环位置控制和力矩控制 (旧版单环，保留兼容)
 void Foc_TestCloseloopAngle(FOC_T *hfoc, PID_T *pid, float angle)
 {
@@ -112,6 +116,9 @@ float Foc_PositionLoop(FOC_T *hfoc, PID_T *anglePID, LOWPASS_FILTER_T *velFilter
   return PID_Calc(velPID, velocity_error);
 }
 
+#endif
+
+#if USE_SPEED_LOOP
 float Foc_VelocityLoop(FOC_T *hfoc, LOWPASS_FILTER_T *filter,
                        PID_T *pid, float target_velocity)
 {
@@ -127,3 +134,4 @@ float Foc_VelocityLoop(FOC_T *hfoc, LOWPASS_FILTER_T *filter,
   SensorVel = LOWPASS_FILTER_Calc(filter, hfoc->dir * SensorVel);
   return PID_Calc(pid, target_velocity - SensorVel);
 }
+#endif

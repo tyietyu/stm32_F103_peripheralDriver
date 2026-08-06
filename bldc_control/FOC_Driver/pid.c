@@ -45,42 +45,60 @@ void PID_Reset(PID_T *pid)
 
 float PID_Calc(PID_T *pid, float error)
 {
-  unsigned long timestamp_now = HAL_GetTick();
+  unsigned long timestamp_now;
+  float derivative;
+  float integral;
+  float output;
+  float proportional;
   float ts;
+  float unsaturated_output;
+
+  if (pid == NULL)
+  {
+    return 0.0f;
+  }
+
+  timestamp_now = HAL_GetTick();
   if (pid->fixed_dt > 0.0f)
   {
-    // 固定步长模式：用于由硬件触发的高频环路(如电流环)，避免 HAL_GetTick 1ms 分辨率欠采样
     ts = pid->fixed_dt;
   }
   else
   {
-    ts = (timestamp_now - pid->prev_timestamp) * 1e-3f; // 转换成秒
-    if (ts <= 0 || ts > 0.5f)
+    ts = (timestamp_now - pid->prev_timestamp) * 1e-3f;
+    if ((ts <= 0.0f) || (ts > 0.5f))
+    {
       ts = 1e-3f;
+    }
   }
 
-  // P环处理
-  float proportional = pid->p * error;
-  //  Tustin散点积分（I环）
-  float integral = pid->prev_integral + pid->i * ts * 0.5f * (error + pid->prev_error);
+  proportional = pid->p * error;
+  integral = pid->prev_integral +
+             pid->i * ts * 0.5f * (error + pid->prev_error);
   integral = _constrain(integral, -pid->limit, pid->limit);
-  // D环 散点微分 （微分环）
-  float derivative = pid->d * (error - pid->prev_error) / ts;
+  derivative = pid->d * (error - pid->prev_error) / ts;
 
-  // 将P，I，D值加起来
-  float output = proportional + integral + derivative;
-  output = _constrain(output, -pid->limit, pid->limit);
-
-  if (pid->output_ramp > 0)
+  unsaturated_output = proportional + integral + derivative;
+  if (((unsaturated_output > pid->limit) && (error > 0.0f)) ||
+      ((unsaturated_output < -pid->limit) && (error < 0.0f)))
   {
-    // 对PID变化率（加速度）进行限制
+    integral = pid->prev_integral;
+    unsaturated_output = proportional + integral + derivative;
+  }
+  output = _constrain(unsaturated_output, -pid->limit, pid->limit);
+
+  if (pid->output_ramp > 0.0f)
+  {
     float output_rate = (output - pid->prev_output) / ts;
+
     if (output_rate > pid->output_ramp)
     {
       output = pid->prev_output + pid->output_ramp * ts;
     }
     else if (output_rate < -pid->output_ramp)
+    {
       output = pid->prev_output - pid->output_ramp * ts;
+    }
   }
 
   pid->prev_integral = integral;

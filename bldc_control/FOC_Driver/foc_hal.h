@@ -10,11 +10,20 @@
 
 #include "foc.h"
 #include "adc.h"
+#include "as5600.h"
 
 /* 电流偏置校准 */
 #define FOC_CURRENT_CALIBRATION_VERSION       1U
 #define FOC_CURRENT_OFFSET_MAX_SPAN_COUNTS    64.0f
 #define FOC_CURRENT_OFFSET_RAIL_MARGIN_COUNTS 16.0f
+#define FOC_CURRENT_SIGN_U                     1.0f
+#define FOC_CURRENT_SIGN_V                     1.0f
+#define FOC_CURRENT_SIGN_W                     1.0f
+#define FOC_CURRENT_ABS_LIMIT_A                2.0f
+#define FOC_CURRENT_SUM_TOLERANCE_A            0.30f
+#define FOC_CURRENT_VALID                       0
+#define FOC_CURRENT_ERROR_LIMIT                -1
+#define FOC_CURRENT_ERROR_SUM                  -2
 
 typedef struct {
   float offset_u;   // U相电流偏置 (ADC原始值)
@@ -32,7 +41,12 @@ typedef struct {
 } Current_Offset_T;
 extern Current_Offset_T g_current_offset;
 
+extern AS5600_T G_SENSOR_A;
+
 int FOC_HAL_InitA(FOC_T *hfoc);
+int FOC_HAL_UpdateSensor(FOC_T *hfoc, uint32_t max_age_ms);
+uint32_t FOC_HAL_GetSensorLastSuccessTick(void);
+uint16_t FOC_HAL_GetSensorErrorCount(void);
 
 /**
  * @brief  电流零点偏置校准
@@ -52,5 +66,6 @@ int FOC_Set_Current_Gain_Calibration(float gain_u, float gain_v, float gain_w,
  */
 int FOC_Get_Calibrated_Current(float raw_u, float raw_v, float raw_w,
                                float *iu, float *iv, float *iw);
+int FOC_ValidatePhaseCurrents(float iu, float iv, float iw, float current_limit);
 
 #endif

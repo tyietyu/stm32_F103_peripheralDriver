@@ -29,90 +29,100 @@
 /* USER CODE BEGIN Includes */
 #include "foc.h"
 #include "foc_hal.h"
+#if USE_SPEED_LOOP
 #include "foc_test.h"
-#include "hal_iic.h"
+#endif
 #include "log.h"
 #include "lowpass_filter.h"
-#include "math.h"
 #include "pid.h"
-#include "as5600.h"
-#include "drv8301.h"  
+#include "drv8301.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-extern AS5600_T G_SENSOR_A;
-
-typedef struct flag
+typedef struct
 {
   volatile uint8_t flag;
   volatile uint16_t count;
-}g_Flag_t;
-g_Flag_t g_led_status={0};
-g_Flag_t g_bldc_motor_status={0};
+} g_Flag_t;
 
-typedef struct {
-  volatile float I_U; // U Current(A)
-  volatile float I_V; // V Current(A)
-  volatile float I_W; // W Current(A)
-  volatile float V_U; // U Voltage(V)
-  volatile float V_V; // V Voltage(V)
-  volatile float V_W; // W Voltage(V)
+typedef struct
+{
+  volatile float I_U;
+  volatile float I_V;
+  volatile float I_W;
+  volatile float V_U;
+  volatile float V_V;
+  volatile float V_W;
 } Monitor_Data_t;
-Monitor_Data_t g_monitor_data;
 
-typedef enum {
+typedef enum
+{
+  BLDC_STATE_OFF = 0,
+  BLDC_STATE_INIT,
+  BLDC_STATE_ALIGN,
+  BLDC_STATE_RUN,
+  BLDC_STATE_FAULT
+} BLDC_State_t;
+
+typedef enum
+{
   BLDC_FAULT_NONE = 0,
   BLDC_FAULT_STARTUP,
   BLDC_FAULT_DRV8301,
   BLDC_FAULT_SPI,
   BLDC_FAULT_ADC,
   BLDC_FAULT_SENSOR,
-  BLDC_FAULT_PWM_SAMPLE
+  BLDC_FAULT_PWM_SAMPLE,
+  BLDC_FAULT_CURRENT_LIMIT,
+  BLDC_FAULT_CURRENT_SUM,
+  BLDC_FAULT_ALIGNMENT
 } BLDC_FaultSource_t;
 
-uint32_t adc_Voltage_buf[ADC_CHANNEL_NUM];
+g_Flag_t g_led_status = {0};
+g_Flag_t g_bldc_motor_status = {0};
+Monitor_Data_t g_monitor_data;
+uint16_t adc_Voltage_buf[ADC_CHANNEL_NUM];
 LOWPASS_FILTER_T voltage_filter[ADC_CHANNEL_NUM];
 LOWPASS_FILTER_T current_filter[ADC_CHANNEL_NUM];
 float phase_voltage_calibration_gain[ADC_CHANNEL_NUM] = {1.0f, 1.0f, 1.0f};
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEG_TO_RAD(deg)     ((deg) * 3.14159f / 180.0f)
-
-/* 调参顺序: 电流环 -> 速度环 -> 位置环，每次只启用一个阶段 */
-#define FOC_TEST_STAGE_CURRENT   0
-#define FOC_TEST_STAGE_VELOCITY  1
-#define FOC_TEST_STAGE_POSITION  2
-#define FOC_TEST_STAGE           FOC_TEST_STAGE_CURRENT
-
-#define FOC_TEST_CURRENT_IQ_REF  0.10f
-
-#define FOC_TUNE_VEL_P           0.10f
-#define FOC_TUNE_VEL_I           0.0f
-#define FOC_TUNE_VEL_D           0.0f
-#define FOC_TUNE_VEL_RAMP        2.0f
-#define FOC_TUNE_VEL_LIMIT       0.30f
-
-#define FOC_TUNE_ANGLE_P         2.0f
-#define FOC_TUNE_ANGLE_I         0.0f
-#define FOC_TUNE_ANGLE_D         0.0f
-#define FOC_TUNE_ANGLE_RAMP      20.0f
-#define FOC_TUNE_ANGLE_LIMIT     10.0f
-
-#define FOC_TUNE_CURRENT_P       0.50f
-#define FOC_TUNE_CURRENT_I       0.0f
-#define FOC_TUNE_CURRENT_D       0.0f
-#define FOC_TUNE_CURRENT_RAMP    1000.0f
-#define FOC_TUNE_CURRENT_LIMIT   4.0f
-
-#define ADC_RAW_VALID_MIN             16.0f
-#define ADC_RAW_VALID_MAX             4079.0f
-#define MONITOR_SAMPLE_FREQ           1000U
-#define CURRENT_MONITOR_DECIMATION    (PWM_FREQ / MONITOR_SAMPLE_FREQ)
-#define ADC_INJECTED_MIN_CALLBACKS_MS  (CURRENT_MONITOR_DECIMATION / 2U)
+#define FOC_INITIAL_IQ_REF               0.10f
+#define FOC_IQ_REF_LIMIT                 0.30f
+#define FOC_CURRENT_P                    0.50f
+#define FOC_CURRENT_I                    1.00f
+#define FOC_CURRENT_D                    0.00f
+#define FOC_CURRENT_OUTPUT_RAMP          1000.0f
+#define FOC_CURRENT_VOLTAGE_LIMIT        4.0f
+#define FOC_OUTER_LOOP_PERIOD_S          0.001f
+#if USE_SPEED_LOOP
+#define FOC_SPEED_P                      0.10f
+#define FOC_SPEED_I                      0.00f
+#define FOC_SPEED_D                      0.00f
+#define FOC_SPEED_OUTPUT_RAMP            2.00f
+#define FOC_SPEED_REFERENCE_LIMIT_RAD_S  10.0f
+#define FOC_VELOCITY_FILTER_TIME_S       0.01f
+#endif
+#if USE_POSITION_LOOP
+#define FOC_POSITION_P                   2.00f
+#define FOC_POSITION_I                   0.00f
+#define FOC_POSITION_D                   0.00f
+#define FOC_POSITION_OUTPUT_RAMP         20.0f
+#define FOC_POSITION_SPEED_LIMIT_RAD_S   10.0f
+#endif
+#define FOC_SENSOR_MAX_AGE_MS            5U
+#define FOC_ALIGNMENT_VOLTAGE            1.50f
+#define FOC_ALIGNMENT_CURRENT_LIMIT_A    1.00f
+#define FOC_ALIGNMENT_TIMEOUT_MS         1500U
+#define FOC_ALIGNMENT_MOVEMENT_RAD       0.01f
+#define ADC_RAW_VALID_MIN                16.0f
+#define ADC_RAW_VALID_MAX                4079.0f
+#define MONITOR_SAMPLE_FREQ              1000U
+#define CURRENT_MONITOR_DECIMATION       (PWM_FREQ / MONITOR_SAMPLE_FREQ)
+#define ADC_INJECTED_MIN_CALLBACKS_MS    (CURRENT_MONITOR_DECIMATION / 2U)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -124,23 +134,30 @@ float phase_voltage_calibration_gain[ADC_CHANNEL_NUM] = {1.0f, 1.0f, 1.0f};
 
 /* USER CODE BEGIN PV */
 FOC_T foc;
-PID_T velPID;
-PID_T anglePID;
-PID_T pid_id, pid_iq;
-LOWPASS_FILTER_T velFilter;
+#if USE_CURRENT_LOOP
+PID_T pid_id;
+PID_T pid_iq;
+#endif
+#if USE_SPEED_LOOP
+PID_T pid_speed;
+LOWPASS_FILTER_T velocity_filter;
+volatile float speed_ref = 0.0f;
+#endif
+#if USE_POSITION_LOOP
+PID_T pid_position;
+volatile float position_ref = 0.0f;
+#endif
 
-float target_velocity = 5.0f;  // TargetSpeed 5 rad/s
-float target_angle = 90.0f;  // TargetAngle 90°
-volatile float iq_ref = 0.0f; // QCurrentRef
-volatile uint8_t bldc_fault_latched = 0;
-volatile uint8_t bldc_run_active = 0;
+volatile float iq_ref = 0.0f;
+volatile BLDC_State_t bldc_state = BLDC_STATE_OFF;
+volatile uint8_t bldc_fault_latched = 0U;
 volatile BLDC_FaultSource_t bldc_fault_source = BLDC_FAULT_NONE;
 volatile int32_t bldc_fault_detail = 0;
-volatile uint8_t bldc_fault_report_pending = 0;
-volatile uint32_t adc_regular_callback_count = 0;
-volatile uint32_t adc_regular_callback_max_cycles = 0;
-volatile uint32_t adc_injected_callback_count = 0;
-volatile uint32_t adc_injected_callback_max_cycles = 0;
+volatile uint8_t bldc_fault_report_pending = 0U;
+volatile uint32_t adc_regular_callback_count = 0U;
+volatile uint32_t adc_regular_callback_max_cycles = 0U;
+volatile uint32_t adc_injected_callback_count = 0U;
+volatile uint32_t adc_injected_callback_max_cycles = 0U;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -164,7 +181,29 @@ static void ADC_Filter_Init(float voltage_tf, float current_tf)
 
 static void Enable_DRV8301_Driver(uint8_t status)
 {
-  HAL_GPIO_WritePin(EN_GATE_GPIO_Port, EN_GATE_Pin, status ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(EN_GATE_GPIO_Port, EN_GATE_Pin,
+                    status ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static uint8_t BLDC_IsDrv8301CommunicationError(DRV8301_Result_t result)
+{
+  return ((result == DRV8301_ERROR_SPI) ||
+          (result == DRV8301_ERROR_FRAME) ||
+          (result == DRV8301_ERROR_ADDRESS)) ? 1U : 0U;
+}
+
+static void BLDC_ForceHardwareOff(void)
+{
+  if ((htim1.Instance == TIM1) && (__HAL_RCC_TIM1_IS_CLK_ENABLED() != 0U))
+  {
+    __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
+  }
+
+  if (__HAL_RCC_GPIOC_IS_CLK_ENABLED() != 0U)
+  {
+    HAL_GPIO_WritePin(EN_GATE_GPIO_Port, EN_GATE_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(DC_CAL_GPIO_Port, DC_CAL_Pin, GPIO_PIN_RESET);
+  }
 }
 
 static void BLDC_PerformanceCounterInit(void)
@@ -191,24 +230,31 @@ static void BLDC_StopOutput(BLDC_FaultSource_t source, int32_t detail)
 
   primask = __get_PRIMASK();
   __disable_irq();
-  __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
-  Enable_DRV8301_Driver(0U);
+  BLDC_ForceHardwareOff();
   iq_ref = 0.0f;
-  bldc_run_active = 0U;
+  bldc_state = BLDC_STATE_FAULT;
   if (bldc_fault_latched == 0U)
   {
     bldc_fault_source = source;
     bldc_fault_detail = detail;
     bldc_fault_latched = 1U;
   }
-  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
-  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 0);
-  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 0);
+  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0U);
+  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 0U);
+  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 0U);
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, PWM_ADC_TRIGGER_LATEST);
+  foc.current_sample_valid = 0U;
+  foc.next_sample_valid = 0U;
+#if USE_CURRENT_LOOP
   PID_Reset(&pid_id);
   PID_Reset(&pid_iq);
-  PID_Reset(&velPID);
-  PID_Reset(&anglePID);
+#endif
+#if USE_SPEED_LOOP
+  PID_Reset(&pid_speed);
+#endif
+#if USE_POSITION_LOOP
+  PID_Reset(&pid_position);
+#endif
 
   if (primask == 0U)
   {
@@ -227,7 +273,8 @@ static void BLDC_TripFromIsr(BLDC_FaultSource_t source, int32_t detail)
   bldc_fault_report_pending = 1U;
 }
 
-static void BLDC_FailAndStop(BLDC_FaultSource_t source, int32_t detail, const char *message)
+static void BLDC_FailAndStop(BLDC_FaultSource_t source, int32_t detail,
+                             const char *message)
 {
   BLDC_StopOutput(source, detail);
   CAW_LOG_ERROR("%s", message);
@@ -297,6 +344,7 @@ static int BLDC_EnablePowerOutput(void)
   htim1.Instance->CR1 &= ~TIM_CR1_CEN;
   htim1.Instance->CNT = 0U;
   htim1.Instance->EGR = TIM_EGR_UG;
+  FOC_CommitPwmUpdate(&foc);
   __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_UPDATE | TIM_FLAG_CC4);
   __HAL_TIM_MOE_ENABLE(&htim1);
   htim1.Instance->CR1 |= TIM_CR1_CEN;
@@ -308,31 +356,162 @@ static int BLDC_EnablePowerOutput(void)
   return 0;
 }
 
-static void BLDC_SetIqRef(float next_iq_ref)
+#if USE_CURRENT_LOOP
+static int BLDC_StoreIqReference(float reference)
 {
   uint32_t primask;
+  int result = -1;
+
+  if (reference != reference)
+  {
+    return -1;
+  }
+
+  if (reference > FOC_IQ_REF_LIMIT)
+  {
+    reference = FOC_IQ_REF_LIMIT;
+  }
+  else if (reference < -FOC_IQ_REF_LIMIT)
+  {
+    reference = -FOC_IQ_REF_LIMIT;
+  }
 
   primask = __get_PRIMASK();
   __disable_irq();
-  iq_ref = next_iq_ref;
+  if ((bldc_state == BLDC_STATE_RUN) && (bldc_fault_latched == 0U))
+  {
+    iq_ref = reference;
+    result = 0;
+  }
   if (primask == 0U)
   {
     __enable_irq();
   }
+  return result;
+}
+#endif
+
+int BLDC_SetIqReference(float reference)
+{
+#if (!USE_CURRENT_LOOP || USE_SPEED_LOOP)
+  (void)reference;
+  return -1;
+#else
+  return BLDC_StoreIqReference(reference);
+#endif
 }
 
-static float BLDC_CalcTuneIqRef(void)
+#if (USE_SPEED_LOOP && !USE_POSITION_LOOP)
+int BLDC_SetSpeedReference(float reference)
 {
-#if (FOC_TEST_STAGE == FOC_TEST_STAGE_CURRENT)
-  return FOC_TEST_CURRENT_IQ_REF;
-#elif (FOC_TEST_STAGE == FOC_TEST_STAGE_VELOCITY)
-  return Foc_VelocityLoop(&foc, &velFilter, &velPID, target_velocity);
-#elif (FOC_TEST_STAGE == FOC_TEST_STAGE_POSITION)
-  return Foc_PositionLoop(&foc, &anglePID, &velFilter, &velPID,
-                          DEG_TO_RAD(target_angle));
-#else
-#error "Invalid FOC_TEST_STAGE"
+  uint32_t primask;
+  int result = -1;
+
+  if (reference != reference)
+  {
+    return -1;
+  }
+
+  if (reference > FOC_SPEED_REFERENCE_LIMIT_RAD_S)
+  {
+    reference = FOC_SPEED_REFERENCE_LIMIT_RAD_S;
+  }
+  else if (reference < -FOC_SPEED_REFERENCE_LIMIT_RAD_S)
+  {
+    reference = -FOC_SPEED_REFERENCE_LIMIT_RAD_S;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if ((bldc_state == BLDC_STATE_RUN) && (bldc_fault_latched == 0U))
+  {
+    speed_ref = reference;
+    result = 0;
+  }
+  if (primask == 0U)
+  {
+    __enable_irq();
+  }
+  return result;
+}
 #endif
+
+#if USE_POSITION_LOOP
+int BLDC_SetPositionReference(float reference)
+{
+  uint32_t primask;
+  int result = -1;
+
+  if (reference != reference)
+  {
+    return -1;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if ((bldc_state == BLDC_STATE_RUN) && (bldc_fault_latched == 0U))
+  {
+    position_ref = reference;
+    result = 0;
+  }
+  if (primask == 0U)
+  {
+    __enable_irq();
+  }
+  return result;
+}
+#endif
+
+#if USE_SPEED_LOOP
+static void BLDC_UpdateOuterLoop(void)
+{
+  float next_iq_ref;
+
+#if USE_POSITION_LOOP
+  next_iq_ref = Foc_PositionLoop(&foc, &pid_position, &velocity_filter,
+                                 &pid_speed, position_ref);
+#else
+  next_iq_ref = Foc_VelocityLoop(&foc, &velocity_filter, &pid_speed,
+                                 speed_ref);
+#endif
+  if (BLDC_StoreIqReference(next_iq_ref) != 0)
+  {
+    PID_Reset(&pid_speed);
+#if USE_POSITION_LOOP
+    PID_Reset(&pid_position);
+#endif
+  }
+}
+#endif
+
+void BLDC_Stop(void)
+{
+  uint32_t primask;
+
+  if (bldc_fault_latched != 0U)
+  {
+    return;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  BLDC_ForceHardwareOff();
+  iq_ref = 0.0f;
+  bldc_state = BLDC_STATE_OFF;
+#if USE_CURRENT_LOOP
+  PID_Reset(&pid_id);
+  PID_Reset(&pid_iq);
+#endif
+#if USE_SPEED_LOOP
+  PID_Reset(&pid_speed);
+#endif
+#if USE_POSITION_LOOP
+  PID_Reset(&pid_position);
+#endif
+  if (primask == 0U)
+  {
+    __enable_irq();
+  }
 }
 /* USER CODE END 0 */
 
@@ -371,6 +550,8 @@ int main(void)
   MX_USART1_UART_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
+  BLDC_ForceHardwareOff();
+  bldc_state = BLDC_STATE_OFF;
   if (CAW_LOG_Init(&huart1, LEVEL_DEBUG, true) != 0)
   {
     Error_Handler();
@@ -378,25 +559,35 @@ int main(void)
 
   BLDC_PerformanceCounterInit();
   ADC_Filter_Init(0.01f, 0.005f);
-  FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);   // motor 24V  volatge input,1 dir,  11 pole pairs
-  FOC_SetVoltageLimit(&foc, 24.0f);                             // voltage limit 24V
+  bldc_state = BLDC_STATE_INIT;
+
+  FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);
+  FOC_SetVoltageLimit(&foc, FOC_CURRENT_VOLTAGE_LIMIT);
+  foc.sensor_max_age_ms = FOC_SENSOR_MAX_AGE_MS;
   if (FOC_HAL_InitA(&foc) != 0)
   {
     BLDC_FailAndStop(BLDC_FAULT_SENSOR, 0, "AS5600 init failed");
   }
 
-  PID_Init(&velPID, FOC_TUNE_VEL_P, FOC_TUNE_VEL_I, FOC_TUNE_VEL_D,
-           FOC_TUNE_VEL_RAMP, FOC_TUNE_VEL_LIMIT);
-  PID_Init(&anglePID, FOC_TUNE_ANGLE_P, FOC_TUNE_ANGLE_I, FOC_TUNE_ANGLE_D,
-           FOC_TUNE_ANGLE_RAMP, FOC_TUNE_ANGLE_LIMIT);
-  PID_Init(&pid_id, FOC_TUNE_CURRENT_P, FOC_TUNE_CURRENT_I, FOC_TUNE_CURRENT_D,
-           FOC_TUNE_CURRENT_RAMP, FOC_TUNE_CURRENT_LIMIT);
-  PID_Init(&pid_iq, FOC_TUNE_CURRENT_P, FOC_TUNE_CURRENT_I, FOC_TUNE_CURRENT_D,
-           FOC_TUNE_CURRENT_RAMP, FOC_TUNE_CURRENT_LIMIT);
-  // 电流环由 TIM1_CC4 触发 ADC 注入同步执行，周期严格等于 1/PWM_FREQ
+#if USE_CURRENT_LOOP
+  PID_Init(&pid_id, FOC_CURRENT_P, FOC_CURRENT_I, FOC_CURRENT_D,
+           FOC_CURRENT_OUTPUT_RAMP, FOC_CURRENT_VOLTAGE_LIMIT);
+  PID_Init(&pid_iq, FOC_CURRENT_P, FOC_CURRENT_I, FOC_CURRENT_D,
+           FOC_CURRENT_OUTPUT_RAMP, FOC_CURRENT_VOLTAGE_LIMIT);
   PID_SetFixedDt(&pid_id, 1.0f / (float)PWM_FREQ);
   PID_SetFixedDt(&pid_iq, 1.0f / (float)PWM_FREQ);
-  LOWPASS_FILTER_Init(&velFilter, 0.01f);                   //filter time constant 10ms
+#endif
+#if USE_SPEED_LOOP
+  PID_Init(&pid_speed, FOC_SPEED_P, FOC_SPEED_I, FOC_SPEED_D,
+           FOC_SPEED_OUTPUT_RAMP, FOC_IQ_REF_LIMIT);
+  PID_SetFixedDt(&pid_speed, FOC_OUTER_LOOP_PERIOD_S);
+  LOWPASS_FILTER_Init(&velocity_filter, FOC_VELOCITY_FILTER_TIME_S);
+#endif
+#if USE_POSITION_LOOP
+  PID_Init(&pid_position, FOC_POSITION_P, FOC_POSITION_I, FOC_POSITION_D,
+           FOC_POSITION_OUTPUT_RAMP, FOC_POSITION_SPEED_LIMIT_RAD_S);
+  PID_SetFixedDt(&pid_position, FOC_OUTER_LOOP_PERIOD_S);
+#endif
 
   if (BLDC_StartSamplingTimer() != 0)
   {
@@ -408,52 +599,30 @@ int main(void)
   }
 
   Enable_DRV8301_Driver(1U);
-  drv_result = DRV8301_ConfigInit(&hspi2,
-                                  DRV8301_CR1_GATE_CURRENT_1_7A,
-                                  DRV8301_CR1_PWM_MODE_6PWM,
-                                  DRV8301_CR1_OC_MODE_LATCH_SD,
-                                  DRV8301_OC_ADJ_SET_0_250V,
-                                  DRV8301_CR2_GAIN_10,
-                                  DRV8301_CR2_OCTW_MODE_OT_OC,
-                                  DRV8301_CR2_OC_TOFF_CYCLE);
+  drv_result = DRV8301_Init(&hspi2);
   if (drv_result != DRV8301_OK)
   {
     BLDC_FaultSource_t source;
 
-    source = (DRV8301_GetHandle()->communication_error != 0U)
+    source = (BLDC_IsDrv8301CommunicationError(drv_result) != 0U)
                  ? BLDC_FAULT_SPI
                  : BLDC_FAULT_DRV8301;
     BLDC_FailAndStop(source, (int32_t)drv_result, "DRV8301 init failed");
   }
 
-  if (FOC_Current_Offset_Calibration(&hadc1, 200) != 0)
+  if (FOC_Current_Offset_Calibration(&hadc1, 200U) != 0)
   {
     BLDC_FailAndStop(BLDC_FAULT_ADC, (int32_t)hadc1.ErrorCode,
                      "Current offset calibration failed");
   }
+
   FOC_SetTorque(&foc, 0.0f, 0.0f);
-  if (FOC_IsCurrentSampleValid(&foc) == 0U)
+  if (FOC_IsNextCurrentSampleValid(&foc) == 0U)
   {
     BLDC_FailAndStop(BLDC_FAULT_PWM_SAMPLE, 0,
                      "Initial PWM current sample window invalid");
   }
-  if (BLDC_EnablePowerOutput() != 0)
-  {
-    BLDC_FailAndStop(BLDC_FAULT_STARTUP, 0, "TIM1 power output enable failed");
-  }
 
-  FOC_AlignmentSensor(&foc);
-  FOC_SensorUpdate(&foc);
-  if (!AS5600_IsValid(&G_SENSOR_A))
-  {
-    BLDC_FailAndStop(BLDC_FAULT_SENSOR, 0,
-                     "AS5600 update failed after alignment");
-  }
-  if (FOC_IsCurrentSampleValid(&foc) == 0U)
-  {
-    BLDC_FailAndStop(BLDC_FAULT_PWM_SAMPLE, 0,
-                     "PWM current sample window invalid");
-  }
   if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf,
                         ADC_CHANNEL_NUM) != HAL_OK)
   {
@@ -469,10 +638,64 @@ int main(void)
   {
     BLDC_FailAndStop(BLDC_FAULT_STARTUP, 0, "TIM2 base start failed");
   }
-  bldc_run_active = 1U;
 
-  CAW_LOG_DEBUG("BLDC Motor ready ...");
-  /* USER CODE END 2 */
+  foc.alignment_current_limit = FOC_ALIGNMENT_CURRENT_LIMIT_A;
+  bldc_state = BLDC_STATE_ALIGN;
+  if (BLDC_EnablePowerOutput() != 0)
+  {
+    BLDC_FailAndStop(BLDC_FAULT_STARTUP, 0,
+                     "TIM1 power output enable failed");
+  }
+  if (FOC_AlignmentSensor(&foc, FOC_ALIGNMENT_VOLTAGE,
+                          FOC_ALIGNMENT_CURRENT_LIMIT_A,
+                          FOC_ALIGNMENT_TIMEOUT_MS,
+                          FOC_ALIGNMENT_MOVEMENT_RAD) != 0)
+  {
+    BLDC_FailAndStop(BLDC_FAULT_ALIGNMENT, 0,
+                     "FOC sensor alignment failed");
+  }
+  if (bldc_fault_latched != 0U)
+  {
+    BLDC_FailAndStop(BLDC_FAULT_ALIGNMENT, 0,
+                     "FOC alignment protection tripped");
+  }
+  if (FOC_HAL_UpdateSensor(&foc, FOC_SENSOR_MAX_AGE_MS) != 0)
+  {
+    BLDC_FailAndStop(BLDC_FAULT_SENSOR,
+                     (int32_t)FOC_HAL_GetSensorErrorCount(),
+                     "AS5600 update failed after alignment");
+  }
+  if (FOC_IsNextCurrentSampleValid(&foc) == 0U)
+  {
+    BLDC_FailAndStop(BLDC_FAULT_PWM_SAMPLE, 0,
+                     "PWM current sample window invalid after alignment");
+  }
+
+#if USE_CURRENT_LOOP
+  PID_Reset(&pid_id);
+  PID_Reset(&pid_iq);
+#endif
+#if USE_SPEED_LOOP
+  PID_Reset(&pid_speed);
+  speed_ref = 0.0f;
+#endif
+#if USE_POSITION_LOOP
+  PID_Reset(&pid_position);
+  position_ref = (float)foc.dir * foc.Sensor_GetAngle();
+#endif
+  iq_ref = 0.0f;
+  bldc_state = BLDC_STATE_RUN;
+#if USE_POSITION_LOOP
+  CAW_LOG_DEBUG("BLDC position loop ready");
+#elif USE_SPEED_LOOP
+  CAW_LOG_DEBUG("BLDC speed loop ready");
+#elif USE_CURRENT_LOOP
+  (void)BLDC_SetIqReference(FOC_INITIAL_IQ_REF);
+  CAW_LOG_DEBUG("BLDC current loop ready");
+#else
+  CAW_LOG_DEBUG("BLDC control loops disabled");
+#endif
+/* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -481,25 +704,23 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if (g_bldc_motor_status.flag)
+    if (g_bldc_motor_status.flag != 0U)
     {
-      g_bldc_motor_status.flag = 0;
-      if (bldc_fault_latched == 0U)
+      g_bldc_motor_status.flag = 0U;
+      if ((bldc_state == BLDC_STATE_RUN) && (bldc_fault_latched == 0U))
       {
-        FOC_SensorUpdate(&foc);
-        if (!AS5600_IsValid(&G_SENSOR_A))
+        if (FOC_HAL_UpdateSensor(&foc, FOC_SENSOR_MAX_AGE_MS) != 0)
         {
-          BLDC_StopOutput(BLDC_FAULT_SENSOR, 0);
+          BLDC_StopOutput(BLDC_FAULT_SENSOR,
+                          (int32_t)FOC_HAL_GetSensorErrorCount());
           CAW_LOG_ERROR("AS5600 update failed, driver disabled");
         }
-      }
-
-      if (bldc_fault_latched == 0U)
-      {
-        float temp_iq;
-
-        temp_iq = BLDC_CalcTuneIqRef();
-        BLDC_SetIqRef(temp_iq);
+#if USE_SPEED_LOOP
+        else
+        {
+          BLDC_UpdateOuterLoop();
+        }
+#endif
       }
     }
 
@@ -517,15 +738,17 @@ int main(void)
                     (long)detail);
     }
 
-    if (g_led_status.flag)
+    if (g_led_status.flag != 0U)
     {
       uint16_t status;
       DRV8301_Result_t result;
 
-      g_led_status.flag = 0;
+      g_led_status.flag = 0U;
       HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-      if (bldc_fault_latched == 0U)
+      if (((bldc_state == BLDC_STATE_ALIGN) ||
+           (bldc_state == BLDC_STATE_RUN)) &&
+          (bldc_fault_latched == 0U))
       {
         result = DRV8301_ReadStatus1(&status);
         if (result != DRV8301_OK)
@@ -535,17 +758,13 @@ int main(void)
         }
         else if ((status & DRV8301_SR1_FAULT) != 0U)
         {
-          char fault_str[64];
-
           BLDC_StopOutput(BLDC_FAULT_DRV8301, (int32_t)status);
-          DRV8301_GetFaultString(status, fault_str, sizeof(fault_str));
-          CAW_LOG_ERROR("DRV8301 Fault: %s", fault_str);
+          CAW_LOG_ERROR("DRV8301 fault status=0x%03X", (unsigned int)status);
         }
       }
     }
-
   }
-  /* USER CODE END 3 */
+/* USER CODE END 3 */
 }
 
 /**
@@ -597,28 +816,30 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   if (htim == &htim2)
   {
     static uint32_t last_injected_callback_count = 0U;
+    uint32_t callback_delta;
     uint32_t current_injected_callback_count;
 
     current_injected_callback_count = adc_injected_callback_count;
-    if ((bldc_run_active != 0U) &&
-        ((current_injected_callback_count - last_injected_callback_count) <
-         ADC_INJECTED_MIN_CALLBACKS_MS))
+    callback_delta = current_injected_callback_count -
+                     last_injected_callback_count;
+    if (((bldc_state == BLDC_STATE_ALIGN) ||
+         (bldc_state == BLDC_STATE_RUN)) &&
+        (callback_delta < ADC_INJECTED_MIN_CALLBACKS_MS))
     {
-      BLDC_TripFromIsr(BLDC_FAULT_ADC, (int32_t)(current_injected_callback_count -
-                       last_injected_callback_count));
+      BLDC_TripFromIsr(BLDC_FAULT_ADC, (int32_t)callback_delta);
     }
     last_injected_callback_count = current_injected_callback_count;
-    g_bldc_motor_status.flag = 1U; //1ms FOC angle update
+    g_bldc_motor_status.flag = 1U;
 
-    if (++g_led_status.count >= 200U) //200ms LED
+    if (++g_led_status.count >= 200U)
     {
-      g_led_status.count = 0;
-      g_led_status.flag = 1;
+      g_led_status.count = 0U;
+      g_led_status.flag = 1U;
     }
   }
 }
 
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
   if (hadc == &hadc1)
   {
@@ -633,7 +854,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
     {
       raw_voltage = (float)adc_Voltage_buf[i] * ADC_VOLTAGE_FACTOR *
                     phase_voltage_calibration_gain[i];
-      phase_voltage[i] = LOWPASS_FILTER_CalcWithDt(&voltage_filter[i], raw_voltage, 1.0f / MONITOR_SAMPLE_FREQ);
+      phase_voltage[i] = LOWPASS_FILTER_CalcWithDt(
+        &voltage_filter[i], raw_voltage, 1.0f / MONITOR_SAMPLE_FREQ);
     }
 
     g_monitor_data.V_U = phase_voltage[0];
@@ -643,27 +865,36 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
   }
 }
 
-void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
+void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
   if (hadc->Instance == ADC1)
   {
     static uint16_t monitor_divider = 0U;
+    BLDC_State_t state;
+    float current_limit;
     float iu;
     float iv;
     float iw;
     float raw_iu;
     float raw_iv;
     float raw_iw;
+    int current_result;
+#if USE_CURRENT_LOOP
+    uint32_t now;
+#endif
     uint32_t start;
 
     start = DWT->CYCCNT;
     ++adc_injected_callback_count;
-    if ((bldc_fault_latched != 0U) || (bldc_run_active == 0U))
+    state = bldc_state;
+    if ((bldc_fault_latched != 0U) ||
+        ((state != BLDC_STATE_ALIGN) && (state != BLDC_STATE_RUN)))
     {
       BLDC_UpdateMaxCycles(&adc_injected_callback_max_cycles, start);
       return;
     }
 
+    FOC_CommitPwmUpdate(&foc);
     raw_iu = (float)HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
     raw_iv = (float)HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_2);
     raw_iw = (float)HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_3);
@@ -679,16 +910,30 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
       return;
     }
 
+    current_limit = (state == BLDC_STATE_ALIGN)
+                      ? foc.alignment_current_limit
+                      : FOC_CURRENT_ABS_LIMIT_A;
+    current_result = FOC_ValidatePhaseCurrents(iu, iv, iw, current_limit);
+    if (current_result != 0)
+    {
+      BLDC_TripFromIsr((current_result == FOC_CURRENT_ERROR_SUM)
+                         ? BLDC_FAULT_CURRENT_SUM
+                         : BLDC_FAULT_CURRENT_LIMIT,
+                       current_result);
+      BLDC_UpdateMaxCycles(&adc_injected_callback_max_cycles, start);
+      return;
+    }
+
     ++monitor_divider;
     if (monitor_divider >= CURRENT_MONITOR_DECIMATION)
     {
       monitor_divider = 0U;
-      g_monitor_data.I_U = LOWPASS_FILTER_CalcWithDt(&current_filter[0], iu,
-                                                     1.0f / MONITOR_SAMPLE_FREQ);
-      g_monitor_data.I_V = LOWPASS_FILTER_CalcWithDt(&current_filter[1], iv,
-                                                     1.0f / MONITOR_SAMPLE_FREQ);
-      g_monitor_data.I_W = LOWPASS_FILTER_CalcWithDt(&current_filter[2], iw,
-                                                     1.0f / MONITOR_SAMPLE_FREQ);
+      g_monitor_data.I_U = LOWPASS_FILTER_CalcWithDt(
+        &current_filter[0], iu, 1.0f / MONITOR_SAMPLE_FREQ);
+      g_monitor_data.I_V = LOWPASS_FILTER_CalcWithDt(
+        &current_filter[1], iv, 1.0f / MONITOR_SAMPLE_FREQ);
+      g_monitor_data.I_W = LOWPASS_FILTER_CalcWithDt(
+        &current_filter[2], iw, 1.0f / MONITOR_SAMPLE_FREQ);
     }
 
     if (FOC_IsCurrentSampleValid(&foc) == 0U)
@@ -698,12 +943,27 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
       return;
     }
 
-    FOC_CurrentLoopControl(&foc, 0.0f, iq_ref, iu, iv, iw,
-                           &pid_id, &pid_iq);
-    if (FOC_IsCurrentSampleValid(&foc) == 0U)
+    if (state == BLDC_STATE_ALIGN)
+    {
+      BLDC_UpdateMaxCycles(&adc_injected_callback_max_cycles, start);
+      return;
+    }
+
+#if USE_CURRENT_LOOP
+    now = HAL_GetTick();
+    if (FOC_CurrentLoopControl(&foc, 0.0f, iq_ref, iu, iv, iw,
+                               &pid_id, &pid_iq, now) != 0)
+    {
+      BLDC_TripFromIsr(BLDC_FAULT_SENSOR,
+                       (int32_t)(now - FOC_HAL_GetSensorLastSuccessTick()));
+      BLDC_UpdateMaxCycles(&adc_injected_callback_max_cycles, start);
+      return;
+    }
+    if (FOC_IsNextCurrentSampleValid(&foc) == 0U)
     {
       BLDC_TripFromIsr(BLDC_FAULT_PWM_SAMPLE, 0);
     }
+#endif
     BLDC_UpdateMaxCycles(&adc_injected_callback_max_cycles, start);
   }
 }
@@ -715,7 +975,6 @@ void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc)
     BLDC_TripFromIsr(BLDC_FAULT_ADC, (int32_t)hadc->ErrorCode);
   }
 }
-
 /* USER CODE END 4 */
 
 /**
@@ -725,8 +984,8 @@ void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+  BLDC_ForceHardwareOff();
   while (1)
   {
   }

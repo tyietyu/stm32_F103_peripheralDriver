@@ -46,7 +46,41 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+/*
+ * 环路级联关系：位置环 -> 速度环 -> 电流环。
+ * 默认仅启用电流环，外环需完成参数整定后显式开启。
+ */
+#ifndef USE_CURRENT_LOOP
+#define USE_CURRENT_LOOP  1
+#endif
 
+#ifndef USE_SPEED_LOOP
+#define USE_SPEED_LOOP    0
+#endif
+
+#ifndef USE_POSITION_LOOP
+#define USE_POSITION_LOOP 0
+#endif
+
+#if ((USE_CURRENT_LOOP != 0) && (USE_CURRENT_LOOP != 1))
+#error "USE_CURRENT_LOOP must be 0 or 1"
+#endif
+
+#if ((USE_SPEED_LOOP != 0) && (USE_SPEED_LOOP != 1))
+#error "USE_SPEED_LOOP must be 0 or 1"
+#endif
+
+#if ((USE_POSITION_LOOP != 0) && (USE_POSITION_LOOP != 1))
+#error "USE_POSITION_LOOP must be 0 or 1"
+#endif
+
+#if (USE_SPEED_LOOP && !USE_CURRENT_LOOP)
+#error "USE_SPEED_LOOP requires USE_CURRENT_LOOP"
+#endif
+
+#if (USE_POSITION_LOOP && !USE_SPEED_LOOP)
+#error "USE_POSITION_LOOP requires USE_SPEED_LOOP"
+#endif
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
@@ -75,6 +109,16 @@ void Error_Handler(void);
                                       PWM_ADC_END_MARGIN_TICKS - \
                                       PWM_ADC_PEAK_BLANKING_TICKS)
 #define PWM_ADC_TRIGGER_LATEST       (PWM_PERIOD - PWM_ADC_PEAK_BLANKING_TICKS)
+
+/* 参考值单位：iq 为 A，速度为 rad/s，位置为累计机械角 rad。 */
+int BLDC_SetIqReference(float reference);
+#if (USE_SPEED_LOOP && !USE_POSITION_LOOP)
+int BLDC_SetSpeedReference(float reference);
+#endif
+#if USE_POSITION_LOOP
+int BLDC_SetPositionReference(float reference);
+#endif
+void BLDC_Stop(void);
 
 /* USER CODE END EFP */
 

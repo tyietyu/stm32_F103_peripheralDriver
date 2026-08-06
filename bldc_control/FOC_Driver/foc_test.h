@@ -11,15 +11,18 @@
 #include "pid.h"
 #include "foc.h"
 
+#if USE_SPEED_LOOP
 void Foc_TestOpenloopVelocity(FOC_T *hfoc, float target_velocity);
 void Foc_TestCloseloopVelocity(FOC_T *hfoc, LOWPASS_FILTER_T *filter,
                                PID_T *pid, float target_velocity);
-void Foc_TestCloseloopAngle(FOC_T *hfoc, PID_T *pid, float angle);
-
-float Foc_PositionLoop(FOC_T *hfoc, PID_T *anglePID, LOWPASS_FILTER_T *velFilter,
-                       PID_T *velPID, float target_angle);
-
 float Foc_VelocityLoop(FOC_T *hfoc, LOWPASS_FILTER_T *filter,
                        PID_T *pid, float target_velocity);
+#endif
+
+#if USE_POSITION_LOOP
+void Foc_TestCloseloopAngle(FOC_T *hfoc, PID_T *pid, float angle);
+float Foc_PositionLoop(FOC_T *hfoc, PID_T *anglePID, LOWPASS_FILTER_T *velFilter,
+                       PID_T *velPID, float target_angle);
+#endif
 #endif
 

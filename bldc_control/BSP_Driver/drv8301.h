@@ -9,7 +9,6 @@
 #define _DRV8301_H_
 
 #include <stdint.h>
-#include <string.h>
 #include "stm32f4xx_hal.h"
 
 #ifdef __cplusplus
@@ -254,16 +253,6 @@ typedef enum {
     DRV8301_ERROR_FAULT = -7
 } DRV8301_Result_t;
 
-/* DRV8301 handle structure */
-typedef struct {
-    uint16_t status1;
-    uint16_t status2;
-    uint16_t ctrl1;
-    uint16_t ctrl2;
-    DRV8301_Result_t last_result;
-    uint8_t communication_error;
-} DRV8301_Handle_t;
-
 /*============================================================================*/
 /*                      Gain Value Lookup                                      */
 /*============================================================================*/
@@ -278,44 +267,19 @@ typedef struct {
 /*                         Function Prototypes                                 */
 /*============================================================================*/
 
-/* Initialization */
+/**
+ * @brief Initialize DRV8301 and verify the fixed board configuration.
+ * @param hspi SPI handle configured for 16-bit transfers.
+ * @return DRV8301 operation result.
+ */
+DRV8301_Result_t DRV8301_Init(SPI_HandleTypeDef *hspi);
 
-DRV8301_Result_t DRV8301_ConfigInit(SPI_HandleTypeDef *hspi, uint16_t gate_current,
-                                    uint16_t pwm_mode, uint16_t oc_mode,
-                                    uint8_t oc_threshold, uint16_t gain,
-                                    uint16_t octw_mode, uint16_t oc_toff);
-
-/* Register Read/Write */
-DRV8301_Result_t DRV8301_ReadReg(uint8_t addr, uint16_t *data);
-DRV8301_Result_t DRV8301_WriteReg(uint8_t addr, uint16_t data);
-
-/* Status Register Access */
+/**
+ * @brief Read Status Register 1.
+ * @param status Register value output.
+ * @return DRV8301 operation result.
+ */
 DRV8301_Result_t DRV8301_ReadStatus1(uint16_t *status);
-DRV8301_Result_t DRV8301_ReadStatus2(uint16_t *status);
-DRV8301_Result_t DRV8301_ReadCtrl1(uint16_t *ctrl);
-DRV8301_Result_t DRV8301_ReadCtrl2(uint16_t *ctrl);
-
-/* Fault Management */
-DRV8301_Result_t DRV8301_HasFault(uint8_t *has_fault);
-DRV8301_Result_t DRV8301_ClearFaults(void);
-void DRV8301_GetFaultString(uint16_t status1, char *buf, uint16_t buf_size);
-
-/* Control Register 1 Configuration */
-DRV8301_Result_t DRV8301_SetGateCurrent(uint16_t current);
-DRV8301_Result_t DRV8301_SetPWMMode(uint16_t mode);
-DRV8301_Result_t DRV8301_SetOCMode(uint16_t mode);
-DRV8301_Result_t DRV8301_SetOCThreshold(uint8_t threshold);
-
-/* Control Register 2 Configuration */
-DRV8301_Result_t DRV8301_SetGain(uint16_t gain);
-DRV8301_Result_t DRV8301_SetDCCalMode(uint8_t enable);
-DRV8301_Result_t DRV8301_SetOCTWMode(uint16_t mode);
-
-/* Utility Functions */
-DRV8301_Result_t DRV8301_GetDeviceID(uint8_t *device_id);
-DRV8301_Result_t DRV8301_GetGainValue(float *gain_value);
-DRV8301_Handle_t* DRV8301_GetHandle(void);
-DRV8301_Result_t DRV8301_UpdateAll(void);
 
 #ifdef __cplusplus
 }

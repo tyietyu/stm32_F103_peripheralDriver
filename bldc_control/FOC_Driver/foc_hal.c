@@ -10,6 +10,8 @@
 #include "as5600.h"
 #include "main.h"
 
+#include <math.h>
+
 AS5600_T G_SENSOR_A;
 Current_Offset_T g_current_offset = {
   0.0f, 0.0f, 0.0f,
@@ -18,14 +20,14 @@ Current_Offset_T g_current_offset = {
   FOC_CURRENT_CALIBRATION_VERSION, 0U, 0U
 };
 
-float Sensor_GetOnceAngleA() { return AS5600_GetOnceAngle(&G_SENSOR_A); }
-float Sensor_GetAngleA() { return AS5600_GetAngle(&G_SENSOR_A); }
-void Sensor_UpdateA() { AS5600_Update(&G_SENSOR_A); }
-float Sensor_GetVelocityA() { return AS5600_GetVelocity(&G_SENSOR_A); }
+static float Sensor_GetOnceAngleA(void) { return AS5600_GetOnceAngle(&G_SENSOR_A); }
+static float Sensor_GetAngleA(void) { return AS5600_GetAngle(&G_SENSOR_A); }
+static int Sensor_UpdateA(void) { return AS5600_Update(&G_SENSOR_A); }
+static float Sensor_GetVelocityA(void) { return AS5600_GetVelocity(&G_SENSOR_A); }
 
 int FOC_HAL_InitA(FOC_T *hfoc)
 {
-  if (AS5600_Init(&G_SENSOR_A) != 0)
+  if ((hfoc == NULL) || (AS5600_Init(&G_SENSOR_A) != 0))
   {
     return -1;
   }
@@ -35,7 +37,46 @@ int FOC_HAL_InitA(FOC_T *hfoc)
   FOC_Bind_SensorGetAngle(hfoc, Sensor_GetAngleA);
   FOC_Bind_SensorGetVelocity(hfoc, Sensor_GetVelocityA);
 
+  hfoc->sensor_valid = 1U;
+  hfoc->sensor_last_success_tick = AS5600_GetLastSuccessTick(&G_SENSOR_A);
+  hfoc->cached_angle_el = FOC_SensorAngleToElectricalAngle(hfoc,
+                                                           AS5600_GetOnceAngle(&G_SENSOR_A));
   return 0;
+}
+
+int FOC_HAL_UpdateSensor(FOC_T *hfoc, uint32_t max_age_ms)
+{
+  uint32_t now;
+
+  if ((hfoc == NULL) || (AS5600_Update(&G_SENSOR_A) != 0))
+  {
+    if (hfoc != NULL)
+    {
+      hfoc->sensor_valid = 0U;
+    }
+    return -1;
+  }
+
+  now = HAL_GetTick();
+  if (!AS5600_IsFresh(&G_SENSOR_A, now, max_age_ms))
+  {
+    hfoc->sensor_valid = 0U;
+    return -1;
+  }
+
+  FOC_UpdateCachedSensorAngle(hfoc, AS5600_GetOnceAngle(&G_SENSOR_A),
+                              AS5600_GetLastSuccessTick(&G_SENSOR_A));
+  return 0;
+}
+
+uint32_t FOC_HAL_GetSensorLastSuccessTick(void)
+{
+  return AS5600_GetLastSuccessTick(&G_SENSOR_A);
+}
+
+uint16_t FOC_HAL_GetSensorErrorCount(void)
+{
+  return AS5600_GetErrorCount(&G_SENSOR_A);
 }
 
 /**
@@ -61,13 +102,15 @@ int FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc, uint16_t sample_coun
   uint16_t i;
 
   if ((hadc == NULL) || (hadc->Instance != ADC1) ||
+      (htim1.Instance != TIM1) ||
       ((htim1.Instance->CR1 & TIM_CR1_CEN) == 0U) ||
-      ((htim1.Instance->CCER & TIM_CCER_CC4E) == 0U))
+      ((htim1.Instance->CCER & TIM_CCER_CC4E) == 0U) ||
+      ((htim1.Instance->BDTR & TIM_BDTR_MOE) != 0U))
   {
     return -1;
   }
 
-  if (sample_count == 0) 
+  if (sample_count == 0U)
   {
     sample_count = 100;
   }
@@ -80,12 +123,14 @@ int FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc, uint16_t sample_coun
   {
     if (HAL_ADCEx_InjectedStart(hadc) != HAL_OK)
     {
+      (void)HAL_ADCEx_InjectedStop(hadc);
       HAL_GPIO_WritePin(DC_CAL_GPIO_Port, DC_CAL_Pin, GPIO_PIN_RESET);
       return -1;
     }
 
     if (HAL_ADCEx_InjectedPollForConversion(hadc, 10) != HAL_OK)
     {
+      (void)HAL_ADCEx_InjectedStop(hadc);
       HAL_GPIO_WritePin(DC_CAL_GPIO_Port, DC_CAL_Pin, GPIO_PIN_RESET);
       return -1;
     }
@@ -106,8 +151,9 @@ int FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc, uint16_t sample_coun
     HAL_Delay(1);
   }
 
+  (void)HAL_ADCEx_InjectedStop(hadc);
   HAL_GPIO_WritePin(DC_CAL_GPIO_Port, DC_CAL_Pin, GPIO_PIN_RESET);
-  HAL_Delay(1);
+  HAL_Delay(1U);
   g_current_offset.max_span_u = max_u - min_u;
   g_current_offset.max_span_v = max_v - min_v;
   g_current_offset.max_span_w = max_w - min_w;
@@ -167,9 +213,30 @@ int FOC_Get_Calibrated_Current(float raw_u, float raw_v, float raw_w,
     return -1;
   }
 
-  *iu = (raw_u - g_current_offset.offset_u) * factor * g_current_offset.gain_u;
-  *iv = (raw_v - g_current_offset.offset_v) * factor * g_current_offset.gain_v;
-  *iw = (raw_w - g_current_offset.offset_w) * factor * g_current_offset.gain_w;
+  *iu = (raw_u - g_current_offset.offset_u) * factor *
+        g_current_offset.gain_u * FOC_CURRENT_SIGN_U;
+  *iv = (raw_v - g_current_offset.offset_v) * factor *
+        g_current_offset.gain_v * FOC_CURRENT_SIGN_V;
+  *iw = (raw_w - g_current_offset.offset_w) * factor *
+        g_current_offset.gain_w * FOC_CURRENT_SIGN_W;
   return 0;
+}
+
+int FOC_ValidatePhaseCurrents(float iu, float iv, float iw, float current_limit)
+{
+  if ((current_limit <= 0.0f) ||
+      (fabsf(iu) > current_limit) ||
+      (fabsf(iv) > current_limit) ||
+      (fabsf(iw) > current_limit))
+  {
+    return FOC_CURRENT_ERROR_LIMIT;
+  }
+
+  if (fabsf(iu + iv + iw) > FOC_CURRENT_SUM_TOLERANCE_A)
+  {
+    return FOC_CURRENT_ERROR_SUM;
+  }
+
+  return FOC_CURRENT_VALID;
 }
 

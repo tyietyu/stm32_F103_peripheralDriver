@@ -29,7 +29,7 @@ void SDA_Output_Mode(iic_bus_t *bus)
 
     GPIO_InitStructure.Pin = bus->IIC_SDA_PIN;
     GPIO_InitStructure.Mode = GPIO_MODE_OUTPUT_OD;
-    GPIO_InitStructure.Pull = GPIO_NOPULL;
+    GPIO_InitStructure.Pull = GPIO_PULLUP;
     GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
     HAL_GPIO_Init(bus->IIC_SDA_PORT, &GPIO_InitStructure);
 }
@@ -43,7 +43,7 @@ void SDA_Output(iic_bus_t *bus, uint16_t val)
 {
     if (val)
     {
-        bus->IIC_SDA_PORT->BSRR |= bus->IIC_SDA_PIN;
+        bus->IIC_SDA_PORT->BSRR = bus->IIC_SDA_PIN;
     }
     else
     {
@@ -60,7 +60,7 @@ void SCL_Output(iic_bus_t *bus, uint16_t val)
 {
     if (val)
     {
-        bus->IIC_SCL_PORT->BSRR |= bus->IIC_SCL_PIN;
+        bus->IIC_SCL_PORT->BSRR = bus->IIC_SCL_PIN;
     }
     else
     {
@@ -376,16 +376,31 @@ uint8_t IICInit(iic_bus_t *bus)
 {
     GPIO_InitTypeDef GPIO_InitStructure = {0};
 
+    if (bus == NULL)
+    {
+        return 1U;
+    }
+
     GPIO_InitStructure.Pin = bus->IIC_SDA_PIN;
-    GPIO_InitStructure.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStructure.Mode = GPIO_MODE_OUTPUT_OD;
     GPIO_InitStructure.Pull = GPIO_PULLUP;
     GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
     HAL_GPIO_Init(bus->IIC_SDA_PORT, &GPIO_InitStructure);
 
     GPIO_InitStructure.Pin = bus->IIC_SCL_PIN;
     HAL_GPIO_Init(bus->IIC_SCL_PORT, &GPIO_InitStructure);
-    
-	return 0;
+
+    /* 开漏输出写 1 表示释放总线，I2C 空闲态必须为高。 */
+    SDA_Output(bus, 1U);
+    SCL_Output(bus, 1U);
+    delay_us(5U);
+    if ((SDA_Input(bus) == 0U) ||
+        (HAL_GPIO_ReadPin(bus->IIC_SCL_PORT, bus->IIC_SCL_PIN) == GPIO_PIN_RESET))
+    {
+        return 1U;
+    }
+
+    return 0U;
 }
 
 /**
