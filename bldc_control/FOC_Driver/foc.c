@@ -28,11 +28,13 @@ static float FOC_GetEffectiveVoltageLimit(const FOC_T *hfoc);
 static void FOC_SetPwm(FOC_T *hfoc, float ua, float ub, float uc);
 static void FOC_SetVoltageDqWithTrig(FOC_T *hfoc, float ud, float uq,
                                      float sin_angle, float cos_angle);
-static int FOC_AlignmentStep(FOC_T *hfoc, float voltage, float angle_el,
-                             uint32_t start_tick, uint32_t timeout_ms);
-static int FOC_AlignmentHold(FOC_T *hfoc, float voltage, float angle_el,
-                             uint32_t duration_ms, uint32_t start_tick,
-                             uint32_t timeout_ms);
+static FOC_Result_t FOC_AlignmentStep(FOC_T *hfoc, float voltage,
+                                        float angle_el, uint32_t start_tick,
+                                        uint32_t timeout_ms);
+static FOC_Result_t FOC_AlignmentHold(FOC_T *hfoc, float voltage,
+                                      float angle_el, uint32_t duration_ms,
+                                      uint32_t start_tick,
+                                      uint32_t timeout_ms);
 
 float _normalizeAngle(float angle)
 {
@@ -62,11 +64,6 @@ static float FOC_GetEffectiveVoltageLimit(const FOC_T *hfoc)
   float modulation_limit;
   float supply_limit;
 
-  if ((hfoc == NULL) || (hfoc->voltage_power_supply <= 0.0f) ||
-      (hfoc->pwm_period <= 0.0f) || (hfoc->voltage_limit <= 0.0f))
-  {
-    return 0.0f;
-  }
 
   supply_limit = hfoc->voltage_power_supply / 2.0f;
   modulation_limit = hfoc->voltage_power_supply *
@@ -103,11 +100,6 @@ static void FOC_SetPwm(FOC_T *hfoc, float ua, float ub, float uc)
   uint32_t trigger_compare;
   uint32_t trigger_earliest;
 
-  if ((hfoc == NULL) || (hfoc->tim == NULL) ||
-      (hfoc->voltage_power_supply <= 0.0f))
-  {
-    return;
-  }
 
   ua = FOC_CONSTRAIN(ua, 0.0f, hfoc->voltage_power_supply);
   ub = FOC_CONSTRAIN(ub, 0.0f, hfoc->voltage_power_supply);
@@ -224,12 +216,14 @@ static void FOC_SetVoltageDqWithTrig(FOC_T *hfoc, float ud, float uq,
   FOC_SetPwm(hfoc, ua, ub, uc);
 }
 
-void FOC_Closeloop_Init(FOC_T *hfoc, TIM_HandleTypeDef *tim, float pwm_period,
-                        float voltage, int dir, int pp)
+FOC_Result_t FOC_Closeloop_Init(FOC_T *hfoc, TIM_HandleTypeDef *tim,
+                                float pwm_period, float voltage, int dir,
+                                int pp)
 {
-  if (hfoc == NULL)
+  if ((hfoc == NULL) || (tim == NULL) || (tim->Instance == NULL) ||
+      (pwm_period <= 0.0f) || (voltage <= 0.0f) || (pp <= 0))
   {
-    return;
+    return FOC_ERROR_INVALID_ARGUMENT;
   }
 
   memset(hfoc, 0, sizeof(*hfoc));
@@ -240,6 +234,7 @@ void FOC_Closeloop_Init(FOC_T *hfoc, TIM_HandleTypeDef *tim, float pwm_period,
   hfoc->dir = (dir >= 0) ? 1 : -1;
   hfoc->pp = pp;
   hfoc->sensor_max_age_ms = FOC_DEFAULT_SENSOR_AGE;
+  return FOC_RESULT_OK;
 }
 
 void FOC_SetVoltageLimit(FOC_T *hfoc, float voltage)
@@ -333,25 +328,20 @@ void FOC_UpdateCachedSensorAngle(FOC_T *hfoc, float mechanical_angle,
   }
 }
 
-int FOC_SensorUpdate(FOC_T *hfoc)
+FOC_Result_t FOC_SensorUpdate(FOC_T *hfoc)
 {
   uint32_t now;
 
-  if ((hfoc == NULL) || (hfoc->Sensor_Update == NULL) ||
-      (hfoc->Sensor_GetOnceAngle == NULL))
-  {
-    return -1;
-  }
 
   if (hfoc->Sensor_Update() != 0)
   {
     hfoc->sensor_valid = 0U;
-    return -1;
+    return FOC_ERROR_SENSOR_UPDATE_FAILED;
   }
 
   now = HAL_GetTick();
   FOC_UpdateCachedSensorAngle(hfoc, hfoc->Sensor_GetOnceAngle(), now);
-  return 0;
+  return FOC_RESULT_OK;
 }
 
 uint8_t FOC_IsSensorFresh(const FOC_T *hfoc, uint32_t now)
@@ -365,48 +355,57 @@ uint8_t FOC_IsSensorFresh(const FOC_T *hfoc, uint32_t now)
           hfoc->sensor_max_age_ms) ? 1U : 0U;
 }
 
-static int FOC_AlignmentStep(FOC_T *hfoc, float voltage, float angle_el,
-                             uint32_t start_tick, uint32_t timeout_ms)
+static FOC_Result_t FOC_AlignmentStep(FOC_T *hfoc, float voltage,
+                                        float angle_el, uint32_t start_tick,
+                                        uint32_t timeout_ms)
 {
-  if (((uint32_t)(HAL_GetTick() - start_tick) >= timeout_ms) ||
-      ((hfoc->tim->Instance->BDTR & TIM_BDTR_MOE) == 0U))
+  if ((hfoc->tim->Instance->BDTR & TIM_BDTR_MOE) == 0U)
   {
-    return -1;
+    return FOC_ERROR_PWM_OUTPUT_DISABLED;
+  }
+  if ((uint32_t)(HAL_GetTick() - start_tick) >= timeout_ms)
+  {
+    return FOC_ERROR_ALIGNMENT_TIMEOUT;
   }
 
   FOC_SetTorque(hfoc, voltage, angle_el);
   if (FOC_IsNextCurrentSampleValid(hfoc) == 0U)
   {
-    return -1;
+    return FOC_ERROR_PWM_SAMPLE_INVALID;
   }
 
   HAL_Delay(FOC_ALIGNMENT_STEP_MS);
   return FOC_SensorUpdate(hfoc);
 }
 
-static int FOC_AlignmentHold(FOC_T *hfoc, float voltage, float angle_el,
-                             uint32_t duration_ms, uint32_t start_tick,
-                             uint32_t timeout_ms)
+static FOC_Result_t FOC_AlignmentHold(FOC_T *hfoc, float voltage,
+                                      float angle_el, uint32_t duration_ms,
+                                      uint32_t start_tick,
+                                      uint32_t timeout_ms)
 {
+  FOC_Result_t result;
   uint32_t elapsed = 0U;
 
   while (elapsed < duration_ms)
   {
-    if (FOC_AlignmentStep(hfoc, voltage, angle_el, start_tick,
-                          timeout_ms) != 0)
+    result = FOC_AlignmentStep(hfoc, voltage, angle_el, start_tick,
+                               timeout_ms);
+    if (result != FOC_RESULT_OK)
     {
-      return -1;
+      return result;
     }
     elapsed += FOC_ALIGNMENT_STEP_MS;
   }
 
-  return 0;
+  return FOC_RESULT_OK;
 }
 
-int FOC_AlignmentSensor(FOC_T *hfoc, float alignment_voltage,
-                        float alignment_current_limit, uint32_t timeout_ms,
-                        float movement_threshold)
+FOC_Result_t FOC_AlignmentSensor(FOC_T *hfoc, float alignment_voltage,
+                                 float alignment_current_limit,
+                                 uint32_t timeout_ms,
+                                 float movement_threshold)
 {
+  FOC_Result_t result;
   float angle_command;
   float end_angle;
   float movement;
@@ -415,22 +414,29 @@ int FOC_AlignmentSensor(FOC_T *hfoc, float alignment_voltage,
   uint32_t start_tick;
 
   if ((hfoc == NULL) || (hfoc->tim == NULL) ||
-      (hfoc->Sensor_GetAngle == NULL) ||
+      (hfoc->tim->Instance == NULL) ||
       (alignment_voltage <= 0.0f) ||
       (alignment_current_limit <= 0.0f) ||
       (timeout_ms == 0U) || (movement_threshold <= 0.0f))
   {
-    return -1;
+    return FOC_ERROR_INVALID_ARGUMENT;
+  }
+  if ((hfoc->Sensor_Update == NULL) ||
+      (hfoc->Sensor_GetOnceAngle == NULL) ||
+      (hfoc->Sensor_GetAngle == NULL))
+  {
+    return FOC_ERROR_SENSOR_NOT_BOUND;
   }
 
   hfoc->alignment_current_limit = alignment_current_limit;
   start_tick = HAL_GetTick();
-  if (FOC_AlignmentHold(hfoc, alignment_voltage, FOC_THREE_PI_2,
-                        FOC_ALIGNMENT_SETTLE_MS, start_tick,
-                        timeout_ms) != 0)
+  result = FOC_AlignmentHold(hfoc, alignment_voltage, FOC_THREE_PI_2,
+                             FOC_ALIGNMENT_SETTLE_MS, start_tick,
+                             timeout_ms);
+  if (result != FOC_RESULT_OK)
   {
     FOC_SetTorque(hfoc, 0.0f, FOC_THREE_PI_2);
-    return -1;
+    return result;
   }
 
   start_angle = hfoc->Sensor_GetAngle();
@@ -439,11 +445,12 @@ int FOC_AlignmentSensor(FOC_T *hfoc, float alignment_voltage,
     angle_command = FOC_THREE_PI_2 +
                     FOC_ALIGNMENT_SWEEP * (float)i /
                     (float)FOC_ALIGNMENT_STEPS;
-    if (FOC_AlignmentStep(hfoc, alignment_voltage, angle_command,
-                          start_tick, timeout_ms) != 0)
+    result = FOC_AlignmentStep(hfoc, alignment_voltage, angle_command,
+                               start_tick, timeout_ms);
+    if (result != FOC_RESULT_OK)
     {
       FOC_SetTorque(hfoc, 0.0f, FOC_THREE_PI_2);
-      return -1;
+      return result;
     }
   }
 
@@ -452,7 +459,7 @@ int FOC_AlignmentSensor(FOC_T *hfoc, float alignment_voltage,
   if (fabsf(movement) < movement_threshold)
   {
     FOC_SetTorque(hfoc, 0.0f, FOC_THREE_PI_2);
-    return -1;
+    return FOC_ERROR_ALIGNMENT_NO_MOVEMENT;
   }
   hfoc->dir = (movement > 0.0f) ? 1 : -1;
 
@@ -461,20 +468,22 @@ int FOC_AlignmentSensor(FOC_T *hfoc, float alignment_voltage,
     angle_command = FOC_THREE_PI_2 +
                     FOC_ALIGNMENT_SWEEP * (float)(i - 1U) /
                     (float)FOC_ALIGNMENT_STEPS;
-    if (FOC_AlignmentStep(hfoc, alignment_voltage, angle_command,
-                          start_tick, timeout_ms) != 0)
+    result = FOC_AlignmentStep(hfoc, alignment_voltage, angle_command,
+                               start_tick, timeout_ms);
+    if (result != FOC_RESULT_OK)
     {
       FOC_SetTorque(hfoc, 0.0f, FOC_THREE_PI_2);
-      return -1;
+      return result;
     }
   }
 
-  if (FOC_AlignmentHold(hfoc, alignment_voltage, FOC_THREE_PI_2,
-                        FOC_ALIGNMENT_SETTLE_MS, start_tick,
-                        timeout_ms) != 0)
+  result = FOC_AlignmentHold(hfoc, alignment_voltage, FOC_THREE_PI_2,
+                             FOC_ALIGNMENT_SETTLE_MS, start_tick,
+                             timeout_ms);
+  if (result != FOC_RESULT_OK)
   {
     FOC_SetTorque(hfoc, 0.0f, FOC_THREE_PI_2);
-    return -1;
+    return result;
   }
 
   hfoc->zero_electric_angle = _normalizeAngle(
@@ -482,17 +491,12 @@ int FOC_AlignmentSensor(FOC_T *hfoc, float alignment_voltage,
   FOC_UpdateCachedSensorAngle(hfoc, hfoc->Sensor_GetOnceAngle(),
                               HAL_GetTick());
   FOC_SetTorque(hfoc, 0.0f, FOC_THREE_PI_2);
-  return 0;
+  return FOC_RESULT_OK;
 }
 
 #if USE_CURRENT_LOOP
 void FOC_Clarke(FOC_T *hfoc, float ia, float ib, float ic)
 {
-  if (hfoc == NULL)
-  {
-    return;
-  }
-
   hfoc->i_a = ia;
   hfoc->i_b = ib;
   hfoc->i_c = ic;
@@ -530,9 +534,9 @@ void FOC_SetTorqueWithCurrent(FOC_T *hfoc, float ud, float uq, float angle_el)
                            cosf(normalized_angle));
 }
 
-int FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
-                           float ia, float ib, float ic,
-                           void *pid_id, void *pid_iq, uint32_t now)
+FOC_Result_t FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
+                                    float ia, float ib, float ic,
+                                    void *pid_id, void *pid_iq, uint32_t now)
 {
   float angle_el;
   float cos_angle;
@@ -540,10 +544,9 @@ int FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
   float ud;
   float uq;
 
-  if ((hfoc == NULL) || (pid_id == NULL) || (pid_iq == NULL) ||
-      (FOC_IsSensorFresh(hfoc, now) == 0U))
+  if (FOC_IsSensorFresh(hfoc, now) == 0U)
   {
-    return -1;
+    return FOC_ERROR_SENSOR_STALE;
   }
 
   angle_el = hfoc->cached_angle_el;
@@ -557,24 +560,21 @@ int FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
   ud = PID_Calc((PID_T *)pid_id, id_ref - hfoc->i_d);
   uq = PID_Calc((PID_T *)pid_iq, iq_ref - hfoc->i_q);
   FOC_SetVoltageDqWithTrig(hfoc, ud, uq, sin_angle, cos_angle);
-  return 0;
+  return FOC_RESULT_OK;
 }
 #endif
 
 void FOC_CommitPwmUpdate(FOC_T *hfoc)
 {
-  if (hfoc != NULL)
-  {
-    hfoc->current_sample_valid = hfoc->next_sample_valid;
-  }
+  hfoc->current_sample_valid = hfoc->next_sample_valid;
 }
 
 uint8_t FOC_IsCurrentSampleValid(const FOC_T *hfoc)
 {
-  return ((hfoc != NULL) && (hfoc->current_sample_valid != 0U)) ? 1U : 0U;
+  return (hfoc->current_sample_valid != 0U) ? 1U : 0U;
 }
 
 uint8_t FOC_IsNextCurrentSampleValid(const FOC_T *hfoc)
 {
-  return ((hfoc != NULL) && (hfoc->next_sample_valid != 0U)) ? 1U : 0U;
+  return (hfoc->next_sample_valid != 0U) ? 1U : 0U;
 }

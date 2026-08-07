@@ -20,10 +20,10 @@
 #define FOC_CURRENT_SIGN_V                     1.0f
 #define FOC_CURRENT_SIGN_W                     1.0f
 #define FOC_CURRENT_ABS_LIMIT_A                2.0f
-#define FOC_CURRENT_SUM_TOLERANCE_A            0.30f
-#define FOC_CURRENT_VALID                       0
-#define FOC_CURRENT_ERROR_LIMIT                -1
-#define FOC_CURRENT_ERROR_SUM                  -2
+#define FOC_CURRENT_SUM_TOLERANCE_A            0.50f
+#define FOC_CURRENT_VALID        FOC_RESULT_OK
+#define FOC_CURRENT_ERROR_LIMIT   FOC_ERROR_CURRENT_LIMIT
+#define FOC_CURRENT_ERROR_SUM     FOC_ERROR_CURRENT_SUM
 
 typedef struct {
   float offset_u;   // U相电流偏置 (ADC原始值)
@@ -43,29 +43,30 @@ extern Current_Offset_T g_current_offset;
 
 extern AS5600_T G_SENSOR_A;
 
-int FOC_HAL_InitA(FOC_T *hfoc);
-int FOC_HAL_UpdateSensor(FOC_T *hfoc, uint32_t max_age_ms);
-uint32_t FOC_HAL_GetSensorLastSuccessTick(void);
-uint16_t FOC_HAL_GetSensorErrorCount(void);
+FOC_Result_t FOC_HAL_InitA(FOC_T *hfoc);
+FOC_Result_t FOC_HAL_UpdateSensor(FOC_T *hfoc);
 
 /**
  * @brief  电流零点偏置校准
  * @param  hadc: ADC句柄指针
  * @param  sample_count: 采样次数 (建议100-500)
- * @retval 0: 校准成功, -1: 校准失败
+ * @retval FOC_RESULT_OK: 校准成功
+ * @retval FOC_ERROR_*: 具体失败原因
  */
-int FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc, uint16_t sample_count);
-int FOC_Set_Current_Gain_Calibration(float gain_u, float gain_v, float gain_w,
-                                     uint16_t version);
+FOC_Result_t FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc,
+                                            uint16_t sample_count);
+FOC_Result_t FOC_Set_Current_Gain_Calibration(float gain_u, float gain_v,
+                                               float gain_w, uint16_t version);
 
 /**
  * @brief  获取校准后的电流值
+ * @note   仅在启动校准成功后调用
  * @param  raw_u, raw_v, raw_w: ADC原始采样值
  * @param  iu, iv, iw: 输出的电流值指针 (单位: A)
- * @retval 0: 转换成功, -1: 参数或校准状态无效
  */
-int FOC_Get_Calibrated_Current(float raw_u, float raw_v, float raw_w,
-                               float *iu, float *iv, float *iw);
-int FOC_ValidatePhaseCurrents(float iu, float iv, float iw, float current_limit);
+void FOC_Get_Calibrated_Current(float raw_u, float raw_v, float raw_w,
+                                float *iu, float *iv, float *iw);
+FOC_Result_t FOC_ValidatePhaseCurrents(float iu, float iv, float iw,
+                                       float current_limit);
 
 #endif

@@ -25,11 +25,15 @@ static float Sensor_GetAngleA(void) { return AS5600_GetAngle(&G_SENSOR_A); }
 static int Sensor_UpdateA(void) { return AS5600_Update(&G_SENSOR_A); }
 static float Sensor_GetVelocityA(void) { return AS5600_GetVelocity(&G_SENSOR_A); }
 
-int FOC_HAL_InitA(FOC_T *hfoc)
+FOC_Result_t FOC_HAL_InitA(FOC_T *hfoc)
 {
-  if ((hfoc == NULL) || (AS5600_Init(&G_SENSOR_A) != 0))
+  if (hfoc == NULL)
   {
-    return -1;
+    return FOC_ERROR_INVALID_ARGUMENT;
+  }
+  if (AS5600_Init(&G_SENSOR_A) != 0)
+  {
+    return FOC_ERROR_SENSOR_INIT_FAILED;
   }
 
   FOC_Bind_SensorUpdate(hfoc, Sensor_UpdateA);
@@ -41,42 +45,20 @@ int FOC_HAL_InitA(FOC_T *hfoc)
   hfoc->sensor_last_success_tick = AS5600_GetLastSuccessTick(&G_SENSOR_A);
   hfoc->cached_angle_el = FOC_SensorAngleToElectricalAngle(hfoc,
                                                            AS5600_GetOnceAngle(&G_SENSOR_A));
-  return 0;
+  return FOC_RESULT_OK;
 }
 
-int FOC_HAL_UpdateSensor(FOC_T *hfoc, uint32_t max_age_ms)
+FOC_Result_t FOC_HAL_UpdateSensor(FOC_T *hfoc)
 {
-  uint32_t now;
-
-  if ((hfoc == NULL) || (AS5600_Update(&G_SENSOR_A) != 0))
-  {
-    if (hfoc != NULL)
-    {
-      hfoc->sensor_valid = 0U;
-    }
-    return -1;
-  }
-
-  now = HAL_GetTick();
-  if (!AS5600_IsFresh(&G_SENSOR_A, now, max_age_ms))
+  if (AS5600_Update(&G_SENSOR_A) != 0)
   {
     hfoc->sensor_valid = 0U;
-    return -1;
+    return FOC_ERROR_SENSOR_UPDATE_FAILED;
   }
 
   FOC_UpdateCachedSensorAngle(hfoc, AS5600_GetOnceAngle(&G_SENSOR_A),
                               AS5600_GetLastSuccessTick(&G_SENSOR_A));
-  return 0;
-}
-
-uint32_t FOC_HAL_GetSensorLastSuccessTick(void)
-{
-  return AS5600_GetLastSuccessTick(&G_SENSOR_A);
-}
-
-uint16_t FOC_HAL_GetSensorErrorCount(void)
-{
-  return AS5600_GetErrorCount(&G_SENSOR_A);
+  return FOC_RESULT_OK;
 }
 
 /**
@@ -85,7 +67,8 @@ uint16_t FOC_HAL_GetSensorErrorCount(void)
  * @param  sample_count: 采样次数 (建议100-500)
  * @retval 0: 校准成功, -1: 校准失败
  */
-int FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc, uint16_t sample_count)
+FOC_Result_t FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc,
+                                            uint16_t sample_count)
 {
   float max_u = 0.0f;
   float max_v = 0.0f;
@@ -101,13 +84,14 @@ int FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc, uint16_t sample_coun
   float sum_w = 0.0f;
   uint16_t i;
 
-  if ((hadc == NULL) || (hadc->Instance != ADC1) ||
-      (htim1.Instance != TIM1) ||
-      ((htim1.Instance->CR1 & TIM_CR1_CEN) == 0U) ||
-      ((htim1.Instance->CCER & TIM_CCER_CC4E) == 0U) ||
-      ((htim1.Instance->BDTR & TIM_BDTR_MOE) != 0U))
+  if ((hadc == NULL) || (hadc->Instance != ADC1))
   {
-    return -1;
+    return FOC_ERROR_ADC_CONFIGURATION;
+  }
+
+  if ((htim1.Instance->BDTR & TIM_BDTR_MOE) != 0U)
+  {
+    return FOC_ERROR_PWM_OUTPUT_ACTIVE;
   }
 
   if (sample_count == 0U)
@@ -125,14 +109,14 @@ int FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc, uint16_t sample_coun
     {
       (void)HAL_ADCEx_InjectedStop(hadc);
       HAL_GPIO_WritePin(DC_CAL_GPIO_Port, DC_CAL_Pin, GPIO_PIN_RESET);
-      return -1;
+      return FOC_ERROR_ADC_START_FAILED;
     }
 
     if (HAL_ADCEx_InjectedPollForConversion(hadc, 10) != HAL_OK)
     {
       (void)HAL_ADCEx_InjectedStop(hadc);
       HAL_GPIO_WritePin(DC_CAL_GPIO_Port, DC_CAL_Pin, GPIO_PIN_RESET);
-      return -1;
+      return FOC_ERROR_ADC_CONVERSION_FAILED;
     }
 
     raw_u = (float)HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
@@ -167,7 +151,7 @@ int FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc, uint16_t sample_coun
       (max_v >= (ADC_RESOLUTION - FOC_CURRENT_OFFSET_RAIL_MARGIN_COUNTS)) ||
       (max_w >= (ADC_RESOLUTION - FOC_CURRENT_OFFSET_RAIL_MARGIN_COUNTS)))
   {
-    return -1;
+    return FOC_ERROR_CURRENT_OFFSET_INVALID;
   }
 
   g_current_offset.offset_u = sum_u / (float)sample_count;
@@ -175,16 +159,16 @@ int FOC_Current_Offset_Calibration(ADC_HandleTypeDef *hadc, uint16_t sample_coun
   g_current_offset.offset_w = sum_w / (float)sample_count;
   g_current_offset.calibrated = 1U;
 
-  return 0;
+  return FOC_RESULT_OK;
 }
 
-int FOC_Set_Current_Gain_Calibration(float gain_u, float gain_v, float gain_w,
-                                     uint16_t version)
+FOC_Result_t FOC_Set_Current_Gain_Calibration(float gain_u, float gain_v,
+                                               float gain_w, uint16_t version)
 {
   if ((gain_u <= 0.0f) || (gain_v <= 0.0f) || (gain_w <= 0.0f) ||
       (version != FOC_CURRENT_CALIBRATION_VERSION))
   {
-    return -1;
+    return FOC_ERROR_CURRENT_GAIN_INVALID;
   }
 
   g_current_offset.gain_u = gain_u;
@@ -192,26 +176,19 @@ int FOC_Set_Current_Gain_Calibration(float gain_u, float gain_v, float gain_w,
   g_current_offset.gain_w = gain_w;
   g_current_offset.version = version;
   g_current_offset.gain_calibrated = 1U;
-  return 0;
+  return FOC_RESULT_OK;
 }
 
 /**
  * @brief  获取校准后的电流值
+ * @note   仅在启动校准成功后调用
  * @param  raw_u, raw_v, raw_w: ADC原始采样值
  * @param  iu, iv, iw: 输出的电流值指针 (单位: A)
- * @retval 0: 转换成功, -1: 参数或校准状态无效
  */
-int FOC_Get_Calibrated_Current(float raw_u, float raw_v, float raw_w,
-                               float *iu, float *iv, float *iw)
+void FOC_Get_Calibrated_Current(float raw_u, float raw_v, float raw_w,
+                                float *iu, float *iv, float *iw)
 {
   const float factor = ADC_REF_VOLTAGE / ADC_RESOLUTION * VOLTAGE_TO_CURRENT;
-
-  if ((iu == NULL) || (iv == NULL) || (iw == NULL) ||
-      (g_current_offset.calibrated == 0U) ||
-      (g_current_offset.version != FOC_CURRENT_CALIBRATION_VERSION))
-  {
-    return -1;
-  }
 
   *iu = (raw_u - g_current_offset.offset_u) * factor *
         g_current_offset.gain_u * FOC_CURRENT_SIGN_U;
@@ -219,13 +196,12 @@ int FOC_Get_Calibrated_Current(float raw_u, float raw_v, float raw_w,
         g_current_offset.gain_v * FOC_CURRENT_SIGN_V;
   *iw = (raw_w - g_current_offset.offset_w) * factor *
         g_current_offset.gain_w * FOC_CURRENT_SIGN_W;
-  return 0;
 }
 
-int FOC_ValidatePhaseCurrents(float iu, float iv, float iw, float current_limit)
+FOC_Result_t FOC_ValidatePhaseCurrents(float iu, float iv, float iw,
+                                       float current_limit)
 {
-  if ((current_limit <= 0.0f) ||
-      (fabsf(iu) > current_limit) ||
+  if ((fabsf(iu) > current_limit) ||
       (fabsf(iv) > current_limit) ||
       (fabsf(iw) > current_limit))
   {

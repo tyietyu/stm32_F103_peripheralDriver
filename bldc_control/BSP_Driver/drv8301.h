@@ -106,70 +106,70 @@ extern "C" {
 /*                       Control Register 1 (0x02)                             */
 /*============================================================================*/
 
-/* Gate Drive Peak Current (GATE_CURRENT) - Bits 10:9 */
-#define DRV8301_CR1_GATE_CURRENT_Pos    9
+/* Gate Drive Peak Current (GATE_CURRENT) - Bits 1:0 */
+#define DRV8301_CR1_GATE_CURRENT_Pos    0
 #define DRV8301_CR1_GATE_CURRENT_Msk    (0x03U << DRV8301_CR1_GATE_CURRENT_Pos)
 #define DRV8301_CR1_GATE_CURRENT_1_7A   (0x00U << DRV8301_CR1_GATE_CURRENT_Pos) /* 1.7A peak */
 #define DRV8301_CR1_GATE_CURRENT_0_7A   (0x01U << DRV8301_CR1_GATE_CURRENT_Pos) /* 0.7A peak */
 #define DRV8301_CR1_GATE_CURRENT_0_25A  (0x02U << DRV8301_CR1_GATE_CURRENT_Pos) /* 0.25A peak */
 
-/* Gate Reset - Bit 8 */
-#define DRV8301_CR1_GATE_RESET_Pos      8
+/* Gate Reset - Bit 2 */
+#define DRV8301_CR1_GATE_RESET_Pos      2
 #define DRV8301_CR1_GATE_RESET_Msk      (0x01U << DRV8301_CR1_GATE_RESET_Pos)
 #define DRV8301_CR1_GATE_RESET_NORMAL   (0x00U << DRV8301_CR1_GATE_RESET_Pos)   /* Normal operation */
 #define DRV8301_CR1_GATE_RESET_LATCHED  (0x01U << DRV8301_CR1_GATE_RESET_Pos)   /* Reset gate driver latched faults */
 
-/* PWM Mode - Bit 7 */
-#define DRV8301_CR1_PWM_MODE_Pos        7
+/* PWM Mode - Bit 3 */
+#define DRV8301_CR1_PWM_MODE_Pos        3
 #define DRV8301_CR1_PWM_MODE_Msk        (0x01U << DRV8301_CR1_PWM_MODE_Pos)
 #define DRV8301_CR1_PWM_MODE_6PWM       (0x00U << DRV8301_CR1_PWM_MODE_Pos)     /* 6 PWM inputs */
 #define DRV8301_CR1_PWM_MODE_3PWM       (0x01U << DRV8301_CR1_PWM_MODE_Pos)     /* 3 PWM inputs */
 
-/* Overcurrent Mode (OC_MODE) - Bits 6:5 */
-#define DRV8301_CR1_OC_MODE_Pos         5
+/* Overcurrent Mode (OC_MODE) - Bits 5:4 */
+#define DRV8301_CR1_OC_MODE_Pos         4
 #define DRV8301_CR1_OC_MODE_Msk         (0x03U << DRV8301_CR1_OC_MODE_Pos)
 #define DRV8301_CR1_OC_MODE_LIMIT       (0x00U << DRV8301_CR1_OC_MODE_Pos)      /* Current limit */
 #define DRV8301_CR1_OC_MODE_LATCH_SD    (0x01U << DRV8301_CR1_OC_MODE_Pos)      /* OC latch shutdown */
 #define DRV8301_CR1_OC_MODE_REPORT      (0x02U << DRV8301_CR1_OC_MODE_Pos)      /* Report only */
 #define DRV8301_CR1_OC_MODE_DISABLE     (0x03U << DRV8301_CR1_OC_MODE_Pos)      /* OC disabled */
 
-/* Overcurrent Adjustment (OC_ADJ_SET) - Bits 4:0 */
-#define DRV8301_CR1_OC_ADJ_SET_Pos      0
+/* Overcurrent Adjustment (OC_ADJ_SET) - Bits 10:6 */
+#define DRV8301_CR1_OC_ADJ_SET_Pos      6
 #define DRV8301_CR1_OC_ADJ_SET_Msk      (0x1FU << DRV8301_CR1_OC_ADJ_SET_Pos)
 
 /* OC_ADJ_SET Values - VDS threshold for overcurrent */
-#define DRV8301_OC_ADJ_SET_0_060V       0x00    /* 0.060V */
-#define DRV8301_OC_ADJ_SET_0_068V       0x01    /* 0.068V */
-#define DRV8301_OC_ADJ_SET_0_076V       0x02    /* 0.076V */
-#define DRV8301_OC_ADJ_SET_0_086V       0x03    /* 0.086V */
-#define DRV8301_OC_ADJ_SET_0_097V       0x04    /* 0.097V */
-#define DRV8301_OC_ADJ_SET_0_109V       0x05    /* 0.109V */
-#define DRV8301_OC_ADJ_SET_0_123V       0x06    /* 0.123V */
-#define DRV8301_OC_ADJ_SET_0_138V       0x07    /* 0.138V */
-#define DRV8301_OC_ADJ_SET_0_155V       0x08    /* 0.155V */
-#define DRV8301_OC_ADJ_SET_0_175V       0x09    /* 0.175V */
-#define DRV8301_OC_ADJ_SET_0_197V       0x0A    /* 0.197V */
-#define DRV8301_OC_ADJ_SET_0_222V       0x0B    /* 0.222V */
-#define DRV8301_OC_ADJ_SET_0_250V       0x0C    /* 0.250V */
-#define DRV8301_OC_ADJ_SET_0_282V       0x0D    /* 0.282V */
-#define DRV8301_OC_ADJ_SET_0_317V       0x0E    /* 0.317V */
-#define DRV8301_OC_ADJ_SET_0_358V       0x0F    /* 0.358V */
-#define DRV8301_OC_ADJ_SET_0_403V       0x10    /* 0.403V */
-#define DRV8301_OC_ADJ_SET_0_454V       0x11    /* 0.454V */
-#define DRV8301_OC_ADJ_SET_0_511V       0x12    /* 0.511V */
-#define DRV8301_OC_ADJ_SET_0_576V       0x13    /* 0.576V */
-#define DRV8301_OC_ADJ_SET_0_648V       0x14    /* 0.648V */
-#define DRV8301_OC_ADJ_SET_0_730V       0x15    /* 0.730V */
-#define DRV8301_OC_ADJ_SET_0_822V       0x16    /* 0.822V */
-#define DRV8301_OC_ADJ_SET_0_926V       0x17    /* 0.926V */
-#define DRV8301_OC_ADJ_SET_1_043V       0x18    /* 1.043V */
-#define DRV8301_OC_ADJ_SET_1_175V       0x19    /* 1.175V */
-#define DRV8301_OC_ADJ_SET_1_324V       0x1A    /* 1.324V */
-#define DRV8301_OC_ADJ_SET_1_491V       0x1B    /* 1.491V */
-#define DRV8301_OC_ADJ_SET_1_679V       0x1C    /* 1.679V */
-#define DRV8301_OC_ADJ_SET_1_892V       0x1D    /* 1.892V */
-#define DRV8301_OC_ADJ_SET_2_131V       0x1E    /* 2.131V */
-#define DRV8301_OC_ADJ_SET_2_400V       0x1F    /* 2.400V */
+#define DRV8301_OC_ADJ_SET_0_060V       (0x00U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.060V */
+#define DRV8301_OC_ADJ_SET_0_068V       (0x01U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.068V */
+#define DRV8301_OC_ADJ_SET_0_076V       (0x02U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.076V */
+#define DRV8301_OC_ADJ_SET_0_086V       (0x03U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.086V */
+#define DRV8301_OC_ADJ_SET_0_097V       (0x04U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.097V */
+#define DRV8301_OC_ADJ_SET_0_109V       (0x05U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.109V */
+#define DRV8301_OC_ADJ_SET_0_123V       (0x06U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.123V */
+#define DRV8301_OC_ADJ_SET_0_138V       (0x07U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.138V */
+#define DRV8301_OC_ADJ_SET_0_155V       (0x08U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.155V */
+#define DRV8301_OC_ADJ_SET_0_175V       (0x09U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.175V */
+#define DRV8301_OC_ADJ_SET_0_197V       (0x0AU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.197V */
+#define DRV8301_OC_ADJ_SET_0_222V       (0x0BU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.222V */
+#define DRV8301_OC_ADJ_SET_0_250V       (0x0CU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.250V */
+#define DRV8301_OC_ADJ_SET_0_282V       (0x0DU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.282V */
+#define DRV8301_OC_ADJ_SET_0_317V       (0x0EU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.317V */
+#define DRV8301_OC_ADJ_SET_0_358V       (0x0FU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.358V */
+#define DRV8301_OC_ADJ_SET_0_403V       (0x10U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.403V */
+#define DRV8301_OC_ADJ_SET_0_454V       (0x11U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.454V */
+#define DRV8301_OC_ADJ_SET_0_511V       (0x12U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.511V */
+#define DRV8301_OC_ADJ_SET_0_576V       (0x13U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.576V */
+#define DRV8301_OC_ADJ_SET_0_648V       (0x14U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.648V */
+#define DRV8301_OC_ADJ_SET_0_730V       (0x15U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.730V */
+#define DRV8301_OC_ADJ_SET_0_822V       (0x16U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.822V */
+#define DRV8301_OC_ADJ_SET_0_926V       (0x17U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 0.926V */
+#define DRV8301_OC_ADJ_SET_1_043V       (0x18U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 1.043V */
+#define DRV8301_OC_ADJ_SET_1_175V       (0x19U << DRV8301_CR1_OC_ADJ_SET_Pos) /* 1.175V */
+#define DRV8301_OC_ADJ_SET_1_324V       (0x1AU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 1.324V */
+#define DRV8301_OC_ADJ_SET_1_491V       (0x1BU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 1.491V */
+#define DRV8301_OC_ADJ_SET_1_679V       (0x1CU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 1.679V */
+#define DRV8301_OC_ADJ_SET_1_892V       (0x1DU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 1.892V */
+#define DRV8301_OC_ADJ_SET_2_131V       (0x1EU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 2.131V */
+#define DRV8301_OC_ADJ_SET_2_400V       (0x1FU << DRV8301_CR1_OC_ADJ_SET_Pos) /* 2.400V */
 
 /* Control Register 1 Default Value */
 #define DRV8301_CR1_DEFAULT             0x0000
@@ -178,23 +178,23 @@ extern "C" {
 /*                       Control Register 2 (0x03)                             */
 /*============================================================================*/
 
-/* OCTW Mode - Bits 10:9 */
-#define DRV8301_CR2_OCTW_MODE_Pos       9
+/* OCTW Mode - Bits 1:0 */
+#define DRV8301_CR2_OCTW_MODE_Pos       0
 #define DRV8301_CR2_OCTW_MODE_Msk       (0x03U << DRV8301_CR2_OCTW_MODE_Pos)
 #define DRV8301_CR2_OCTW_MODE_OT_OC     (0x00U << DRV8301_CR2_OCTW_MODE_Pos)    /* Report OT and OC */
 #define DRV8301_CR2_OCTW_MODE_OT_ONLY   (0x01U << DRV8301_CR2_OCTW_MODE_Pos)    /* Report OT only */
 #define DRV8301_CR2_OCTW_MODE_OC_ONLY   (0x02U << DRV8301_CR2_OCTW_MODE_Pos)    /* Report OC only */
 
-/* Shunt Amplifier Gain (GAIN) - Bits 8:7 */
-#define DRV8301_CR2_GAIN_Pos            7
+/* Shunt Amplifier Gain (GAIN) - Bits 3:2 */
+#define DRV8301_CR2_GAIN_Pos            2
 #define DRV8301_CR2_GAIN_Msk            (0x03U << DRV8301_CR2_GAIN_Pos)
 #define DRV8301_CR2_GAIN_10             (0x00U << DRV8301_CR2_GAIN_Pos)         /* Gain = 10 V/V */
 #define DRV8301_CR2_GAIN_20             (0x01U << DRV8301_CR2_GAIN_Pos)         /* Gain = 20 V/V */
 #define DRV8301_CR2_GAIN_40             (0x02U << DRV8301_CR2_GAIN_Pos)         /* Gain = 40 V/V */
 #define DRV8301_CR2_GAIN_80             (0x03U << DRV8301_CR2_GAIN_Pos)         /* Gain = 80 V/V */
 
-/* DC Calibration CH1 (DC_CAL_CH1) - Bit 6 */
-#define DRV8301_CR2_DC_CAL_CH1_Pos      6
+/* DC Calibration CH1 (DC_CAL_CH1) - Bit 4 */
+#define DRV8301_CR2_DC_CAL_CH1_Pos      4
 #define DRV8301_CR2_DC_CAL_CH1_Msk      (0x01U << DRV8301_CR2_DC_CAL_CH1_Pos)
 #define DRV8301_CR2_DC_CAL_CH1_NORMAL   (0x00U << DRV8301_CR2_DC_CAL_CH1_Pos)   /* Normal operation */
 #define DRV8301_CR2_DC_CAL_CH1_CAL      (0x01U << DRV8301_CR2_DC_CAL_CH1_Pos)   /* Short inputs for offset cal */
@@ -205,8 +205,8 @@ extern "C" {
 #define DRV8301_CR2_DC_CAL_CH2_NORMAL   (0x00U << DRV8301_CR2_DC_CAL_CH2_Pos)   /* Normal operation */
 #define DRV8301_CR2_DC_CAL_CH2_CAL      (0x01U << DRV8301_CR2_DC_CAL_CH2_Pos)   /* Short inputs for offset cal */
 
-/* OC_TOFF - Bit 4 */
-#define DRV8301_CR2_OC_TOFF_Pos         4
+/* OC_TOFF - Bit 6 */
+#define DRV8301_CR2_OC_TOFF_Pos         6
 #define DRV8301_CR2_OC_TOFF_Msk         (0x01U << DRV8301_CR2_OC_TOFF_Pos)
 #define DRV8301_CR2_OC_TOFF_CYCLE       (0x00U << DRV8301_CR2_OC_TOFF_Pos)      /* Cycle by cycle */
 #define DRV8301_CR2_OC_TOFF_OFFTIME     (0x01U << DRV8301_CR2_OC_TOFF_Pos)      /* Off-time control */
