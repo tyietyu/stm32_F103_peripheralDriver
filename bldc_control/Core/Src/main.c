@@ -30,7 +30,7 @@
 #include "foc.h"
 #include "foc_hal.h"
 #if USE_SPEED_LOOP
-#include "foc_test.h"
+#include "foc_outer_loop.h"
 #endif
 #include "log.h"
 #include "lowpass_filter.h"
@@ -75,7 +75,6 @@ typedef enum
   BLDC_FAULT_SENSOR,
   BLDC_FAULT_PWM_SAMPLE,
   BLDC_FAULT_CURRENT_LIMIT,
-  BLDC_FAULT_CURRENT_SUM,
   BLDC_FAULT_ALIGNMENT
 } BLDC_FaultSource_t;
 
@@ -90,12 +89,15 @@ float phase_voltage_calibration_gain[ADC_CHANNEL_NUM] = {1.0f, 1.0f, 1.0f};
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+/* 与文档设计值一致；提高前必须先在台架上确认电机允许的连续电流 */
 #define FOC_INITIAL_IQ_REF               0.10f
 #define FOC_IQ_REF_LIMIT                 0.30f
-#define FOC_CURRENT_P                    0.50f
-#define FOC_CURRENT_I                    1.00f
+#define FOC_CURRENT_P                    4.00f
+#define FOC_CURRENT_I                    2000.00f
 #define FOC_CURRENT_D                    0.00f
-#define FOC_CURRENT_OUTPUT_RAMP          1000.0f
+/* 电流环带宽由电压限幅约束即可，无需速率限幅：15kHz 下 200V/s 每拍仅允许输出
+   变化 0.013V，远慢于 I=2000 的积分累积速度，会导致积分饱和后持续超调过流。 */
+#define FOC_CURRENT_OUTPUT_RAMP          0.0f
 #define FOC_CURRENT_VOLTAGE_LIMIT        4.0f
 #define FOC_OUTER_LOOP_PERIOD_S          0.001f
 #if USE_SPEED_LOOP
@@ -104,7 +106,6 @@ float phase_voltage_calibration_gain[ADC_CHANNEL_NUM] = {1.0f, 1.0f, 1.0f};
 #define FOC_SPEED_D                      0.00f
 #define FOC_SPEED_OUTPUT_RAMP            2.00f
 #define FOC_SPEED_REFERENCE_LIMIT_RAD_S  10.0f
-#define FOC_VELOCITY_FILTER_TIME_S       0.01f
 #endif
 #if USE_POSITION_LOOP
 #define FOC_POSITION_P                   2.00f
@@ -112,11 +113,12 @@ float phase_voltage_calibration_gain[ADC_CHANNEL_NUM] = {1.0f, 1.0f, 1.0f};
 #define FOC_POSITION_D                   0.00f
 #define FOC_POSITION_OUTPUT_RAMP         20.0f
 #define FOC_POSITION_SPEED_LIMIT_RAD_S   10.0f
+/* 位置参考对称限幅：+-10 转，防止误设的大数值让位置环一次性输出满速指令 */
+#define FOC_POSITION_REFERENCE_LIMIT_RAD 62.83f
 #endif
-#define FOC_SENSOR_MAX_AGE_MS            5U
 #define FOC_ALIGNMENT_VOLTAGE            1.50f
 #define FOC_ALIGNMENT_CURRENT_LIMIT_A    1.00f
-#define FOC_ALIGNMENT_TIMEOUT_MS         1500U
+#define FOC_ALIGNMENT_TIMEOUT_MS         3000U
 #define FOC_ALIGNMENT_MOVEMENT_RAD       0.01f
 #define MONITOR_SAMPLE_FREQ              1000U
 #define CURRENT_MONITOR_DECIMATION       (PWM_FREQ / MONITOR_SAMPLE_FREQ)
@@ -137,7 +139,7 @@ PID_T pid_iq;
 #endif
 #if USE_SPEED_LOOP
 PID_T pid_speed;
-LOWPASS_FILTER_T velocity_filter;
+/* 进入 RUN 后必须由 BLDC_SetSpeedReference() 显式给定，上电不自转 */
 volatile float speed_ref = 0.0f;
 #endif
 #if USE_POSITION_LOOP
@@ -151,10 +153,25 @@ volatile uint8_t bldc_fault_latched = 0U;
 volatile BLDC_FaultSource_t bldc_fault_source = BLDC_FAULT_NONE;
 volatile int32_t bldc_fault_detail = 0;
 volatile uint8_t bldc_fault_report_pending = 0U;
+/* 过流故障现场快照：ISR 内不可打印，由主循环上报时读取 */
+volatile float bldc_fault_iu = 0.0f;
+volatile float bldc_fault_iv = 0.0f;
+volatile float bldc_fault_iw = 0.0f;
+volatile float bldc_fault_id = 0.0f;
+volatile float bldc_fault_iq = 0.0f;
+volatile float bldc_fault_iq_ref = 0.0f;
+volatile uint32_t bldc_fault_ccr1 = 0U;
+volatile uint32_t bldc_fault_ccr2 = 0U;
+volatile uint32_t bldc_fault_ccr3 = 0U;
+volatile float bldc_fault_raw_iu = 0.0f;
+volatile float bldc_fault_raw_iv = 0.0f;
 volatile uint32_t adc_regular_callback_count = 0U;
 volatile uint32_t adc_regular_callback_max_cycles = 0U;
 volatile uint32_t adc_injected_callback_count = 0U;
 volatile uint32_t adc_injected_callback_max_cycles = 0U;
+/* 1 ms tick 丢拍与传感器读失败统计，调试变量，不参与控制也不打日志 */
+volatile uint32_t outer_tick_overrun_count = 0U;
+volatile uint32_t sensor_read_error_count = 0U;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -235,6 +252,8 @@ static void BLDC_StopOutput(BLDC_FaultSource_t source, int32_t detail)
     bldc_fault_source = source;
     bldc_fault_detail = detail;
     bldc_fault_latched = 1U;
+    /* 日志一律推迟到 200 ms 低频任务：1 ms tick 和 ISR 内都不允许阻塞发串口 */
+    bldc_fault_report_pending = 1U;
   }
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0U);
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 0U);
@@ -242,6 +261,8 @@ static void BLDC_StopOutput(BLDC_FaultSource_t source, int32_t detail)
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, PWM_ADC_TRIGGER_LATEST);
   foc.current_sample_valid = 0U;
   foc.next_sample_valid = 0U;
+  /* 清残留速度估计，避免下次使能时被当作真实运动 */
+  FOC_ObserverReset(&foc, AS5600_GetOnceAngle(&G_SENSOR_A), HAL_GetTick());
 #if USE_CURRENT_LOOP
   PID_Reset(&pid_id);
   PID_Reset(&pid_iq);
@@ -267,7 +288,6 @@ static void BLDC_TripFromIsr(BLDC_FaultSource_t source, int32_t detail)
   }
 
   BLDC_StopOutput(source, detail);
-  bldc_fault_report_pending = 1U;
 }
 
 static void BLDC_FailAndStop(BLDC_FaultSource_t source, int32_t detail,
@@ -419,6 +439,15 @@ int BLDC_SetPositionReference(float reference)
     return -1;
   }
 
+  if (reference > FOC_POSITION_REFERENCE_LIMIT_RAD)
+  {
+    reference = FOC_POSITION_REFERENCE_LIMIT_RAD;
+  }
+  else if (reference < -FOC_POSITION_REFERENCE_LIMIT_RAD)
+  {
+    reference = -FOC_POSITION_REFERENCE_LIMIT_RAD;
+  }
+
   primask = __get_PRIMASK();
   __disable_irq();
   if ((bldc_state == BLDC_STATE_RUN) && (bldc_fault_latched == 0U))
@@ -435,26 +464,112 @@ int BLDC_SetPositionReference(float reference)
 #endif
 
 #if USE_SPEED_LOOP
+/*
+ * 外环，必须排在 1 ms tick 开头、AS5600_Update() 之前执行：软件 I2C 的阻塞
+ * 时长和失败重试会污染外环执行时刻，PID_SetFixedDt(1 ms) 这个固定值才不成立。
+ * 反馈取观测器快照，观测器在 15 kHz 预测，快照永远是新鲜的。
+ * 方向约定（方案 23.5）：速度/位置反馈均需乘 dir。
+ */
 static void BLDC_UpdateOuterLoop(void)
 {
   float next_iq_ref;
+  float observed_position;
+  float observed_velocity;
+  float velocity_target;
+
+  FOC_ObserverSnapshot(&foc, &observed_position, &observed_velocity);
+  observed_position *= (float)foc.dir;
+  observed_velocity *= (float)foc.dir;
 
 #if USE_POSITION_LOOP
-  next_iq_ref = Foc_PositionLoop(&foc, &pid_position, &velocity_filter,
-                                 &pid_speed, position_ref);
+  velocity_target = Foc_PositionLoop(&pid_position, position_ref,
+                                     observed_position);
+  speed_ref = velocity_target;
 #else
-  next_iq_ref = Foc_VelocityLoop(&foc, &velocity_filter, &pid_speed,
-                                 speed_ref);
+  velocity_target = speed_ref;
 #endif
+
+  next_iq_ref = Foc_VelocityLoop(&pid_speed, velocity_target,
+                                 observed_velocity);
   if (BLDC_StoreIqReference(next_iq_ref) != 0)
   {
     PID_Reset(&pid_speed);
 #if USE_POSITION_LOOP
     PID_Reset(&pid_position);
 #endif
+    return;
+  }
+
+  /*
+   * 方案 23.4 第 4 条：电流环 dq 电压饱和时实际 iq 跟不上 iq_ref，而速度 PI
+   * 看到的是"指令没饱和"，会继续积分。把饱和方向回传给速度 PI 的条件积分。
+   */
+  if (foc.voltage_saturated != 0U)
+  {
+    PID_ApplyExternalClip(&pid_speed, (float)foc.voltage_saturation_sign,
+                          next_iq_ref);
   }
 }
 #endif
+
+/*
+ * 故障上报。只允许在 200 ms 低频任务里调用：115200 baud 下一条 128 字节日志
+ * 需要 11.1 ms，放在 1 ms tick 或 ISR 里会直接打穿控制节拍。
+ */
+static void BLDC_ReportPendingFault(void)
+{
+  BLDC_FaultSource_t source;
+  int32_t detail;
+  float snap_iu;
+  float snap_iv;
+  float snap_iw;
+  float snap_id;
+  float snap_iq;
+  float snap_iq_ref;
+  uint32_t snap_ccr1;
+  uint32_t snap_ccr2;
+  uint32_t snap_ccr3;
+  float snap_raw_iu;
+  float snap_raw_iv;
+
+  if (bldc_fault_report_pending == 0U)
+  {
+    return;
+  }
+
+  __disable_irq();
+  source = bldc_fault_source;
+  detail = bldc_fault_detail;
+  snap_iu = bldc_fault_iu;
+  snap_iv = bldc_fault_iv;
+  snap_iw = bldc_fault_iw;
+  snap_id = bldc_fault_id;
+  snap_iq = bldc_fault_iq;
+  snap_iq_ref = bldc_fault_iq_ref;
+  snap_ccr1 = bldc_fault_ccr1;
+  snap_ccr2 = bldc_fault_ccr2;
+  snap_ccr3 = bldc_fault_ccr3;
+  snap_raw_iu = bldc_fault_raw_iu;
+  snap_raw_iv = bldc_fault_raw_iv;
+  bldc_fault_report_pending = 0U;
+  __enable_irq();
+
+  CAW_LOG_ERROR("BLDC fault source=%u detail=%ld", (unsigned int)source,
+                (long)detail);
+  if (source == BLDC_FAULT_CURRENT_LIMIT)
+  {
+    CAW_LOG_ERROR("  iuvw=[%.3f %.3f %.3f] id=%.3f iq=%.3f iq_ref=%.3f",
+                  snap_iu, snap_iv, snap_iw, snap_id, snap_iq, snap_iq_ref);
+    /* raw 相对 offset 的偏离量，以及采样点与三相 CCR 的相对位置 */
+    CAW_LOG_ERROR("  raw=[%.0f %.0f] off=[%.0f %.0f] ccr=[%lu %lu %lu] trig=%lu period=%lu",
+                  snap_raw_iu, snap_raw_iv,
+                  g_current_offset.offset_u, g_current_offset.offset_v,
+                  (unsigned long)snap_ccr1, (unsigned long)snap_ccr2,
+                  (unsigned long)snap_ccr3,
+                  (unsigned long)htim1.Instance->CCR4,
+                  (unsigned long)PWM_PERIOD);
+  }
+}
 
 void BLDC_Stop(void)
 {
@@ -470,6 +585,7 @@ void BLDC_Stop(void)
   BLDC_ForceHardwareOff();
   iq_ref = 0.0f;
   bldc_state = BLDC_STATE_OFF;
+  FOC_ObserverReset(&foc, AS5600_GetOnceAngle(&G_SENSOR_A), HAL_GetTick());
 #if USE_CURRENT_LOOP
   PID_Reset(&pid_id);
   PID_Reset(&pid_iq);
@@ -496,6 +612,11 @@ int main(void)
   /* USER CODE BEGIN 1 */
   DRV8301_Result_t drv_result;
   FOC_Result_t foc_result;
+  uint32_t align_start_tick;
+  uint32_t last_outer_tick;
+#if USE_POSITION_LOOP
+  float position_ref_init;
+#endif
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -541,7 +662,6 @@ int main(void)
                      "FOC init failed");
   }
   FOC_SetVoltageLimit(&foc, FOC_CURRENT_VOLTAGE_LIMIT);
-  foc.sensor_max_age_ms = FOC_SENSOR_MAX_AGE_MS;
   foc_result = FOC_HAL_InitA(&foc);
   if (foc_result != FOC_RESULT_OK)
   {
@@ -556,12 +676,15 @@ int main(void)
            FOC_CURRENT_OUTPUT_RAMP, FOC_CURRENT_VOLTAGE_LIMIT);
   PID_SetFixedDt(&pid_id, 1.0f / (float)PWM_FREQ);
   PID_SetFixedDt(&pid_iq, 1.0f / (float)PWM_FREQ);
+  /* 电压限幅统一由 FOC 的矢量圆限幅执行：先分轴方形限幅会扭曲 d/q 比例，
+     圆限幅已无法恢复。PID 内部只保留积分限幅。 */
+  PID_SetExternalOutputLimit(&pid_id, 1U);
+  PID_SetExternalOutputLimit(&pid_iq, 1U);
 #endif
 #if USE_SPEED_LOOP
   PID_Init(&pid_speed, FOC_SPEED_P, FOC_SPEED_I, FOC_SPEED_D,
            FOC_SPEED_OUTPUT_RAMP, FOC_IQ_REF_LIMIT);
   PID_SetFixedDt(&pid_speed, FOC_OUTER_LOOP_PERIOD_S);
-  LOWPASS_FILTER_Init(&velocity_filter, FOC_VELOCITY_FILTER_TIME_S);
 #endif
 #if USE_POSITION_LOOP
   PID_Init(&pid_position, FOC_POSITION_P, FOC_POSITION_I, FOC_POSITION_D,
@@ -593,6 +716,10 @@ int main(void)
   foc_result = FOC_Current_Offset_Calibration(&hadc1, 200U);
   if (foc_result != FOC_RESULT_OK)
   {
+    CAW_LOG_ERROR("Current cal failed: result=%d span=[%.1f %.1f]",
+                  (int)foc_result,
+                  g_current_offset.max_span_u,
+                  g_current_offset.max_span_v);
     BLDC_FailAndStop(BLDC_FAULT_ADC, (int32_t)foc_result,
                      "Current offset calibration failed");
   }
@@ -624,14 +751,17 @@ int main(void)
     BLDC_FailAndStop(BLDC_FAULT_STARTUP, 0, "TIM2 base start failed");
   }
 
+  align_start_tick = HAL_GetTick();
   foc_result = FOC_AlignmentSensor(&foc, FOC_ALIGNMENT_VOLTAGE,
                                     FOC_ALIGNMENT_CURRENT_LIMIT_A,
                                     FOC_ALIGNMENT_TIMEOUT_MS,
                                     FOC_ALIGNMENT_MOVEMENT_RAD);
   if (foc_result != FOC_RESULT_OK)
   {
-    CAW_LOG_ERROR("FOC alignment interrupted: fault=%d detail=%ld",
-                  (int)bldc_fault_source, (long)bldc_fault_detail);
+    CAW_LOG_ERROR("FOC alignment failed: foc_result=%d, elapsed=%lums, fault=%d detail=%ld",
+                (int)foc_result,
+                (unsigned long)(HAL_GetTick() - align_start_tick),
+                (int)bldc_fault_source, (long)bldc_fault_detail);
     BLDC_FailAndStop(BLDC_FAULT_ALIGNMENT, (int32_t)foc_result,
                      "FOC sensor alignment failed");
   }
@@ -646,19 +776,39 @@ int main(void)
 #endif
 #if USE_POSITION_LOOP
   PID_Reset(&pid_position);
-  position_ref = (float)foc.dir * foc.Sensor_GetAngle();
 #endif
-  iq_ref = 0.0f;
-  bldc_state = BLDC_STATE_RUN;
+
+  /*
+   * 就绪日志必须打在进入 RUN 之前：115200 baud 下一条日志阻塞约 11 ms，而
+   * sensor_max_age_ms 只有 5 ms，先置 RUN 会让第一拍电流环立刻判超龄关断。
+   */
 #if USE_POSITION_LOOP
   CAW_LOG_DEBUG("BLDC position loop ready");
 #elif USE_SPEED_LOOP
   CAW_LOG_DEBUG("BLDC speed loop ready");
 #elif USE_CURRENT_LOOP
-  (void)BLDC_SetIqReference(FOC_INITIAL_IQ_REF);
   CAW_LOG_DEBUG("BLDC current loop ready");
 #else
   CAW_LOG_DEBUG("BLDC control loops disabled");
+#endif
+
+  /* 使能前刷新一次传感器，保证进入 RUN 时角度缓存是新鲜的 */
+  foc_result = FOC_HAL_UpdateSensor(&foc);
+  if (foc_result != FOC_RESULT_OK)
+  {
+    BLDC_FailAndStop(BLDC_FAULT_SENSOR, (int32_t)foc_result,
+                     "AS5600 update failed before RUN");
+  }
+#if USE_POSITION_LOOP
+  /* 闭环瞬间误差必须为 0：参考初始化为当前位置反馈，坐标系含 dir 修正 */
+  FOC_ObserverSnapshot(&foc, &position_ref_init, NULL);
+  position_ref = (float)foc.dir * position_ref_init;
+#endif
+  iq_ref = 0.0f;
+  last_outer_tick = HAL_GetTick();
+  bldc_state = BLDC_STATE_RUN;
+#if (USE_CURRENT_LOOP && !USE_SPEED_LOOP)
+  (void)BLDC_SetIqReference(FOC_INITIAL_IQ_REF);
 #endif
   /* USER CODE END 2 */
 
@@ -669,38 +819,46 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    /*
+     * 1 ms 前台任务，顺序固定（方案 22.7）：
+     *   1. 外环（内部取观测器快照）  2. AS5600_Update()
+     *   3. 成功 -> 观测器修正；失败 -> 计数，不修正、不改 last_success_tick
+     *   4. 传感器超龄 -> 关断        5. 丢拍检测
+     * 本任务内禁止输出日志：115200 baud 下一条日志 11 ms，会打穿 11 个 tick。
+     */
     if (g_bldc_motor_status.flag != 0U)
     {
+      uint32_t tick_now = HAL_GetTick();
+
       g_bldc_motor_status.flag = 0U;
+      /*
+       * 丢拍统计：flag 是置位型，主循环超过 1 ms 时中间的 tick 被静默丢弃，
+       * 外环 dt 随之失真。这里按真实时基算差，覆盖所有丢拍来源。
+       * 只做统计不打日志——在此处打日志会丢更多拍，形成自激。
+       */
+      if ((uint32_t)(tick_now - last_outer_tick) > 1U)
+      {
+        outer_tick_overrun_count += (uint32_t)(tick_now - last_outer_tick) - 1U;
+      }
+      last_outer_tick = tick_now;
+
       if ((bldc_state == BLDC_STATE_RUN) && (bldc_fault_latched == 0U))
       {
+#if USE_SPEED_LOOP
+        BLDC_UpdateOuterLoop();
+#endif
         foc_result = FOC_HAL_UpdateSensor(&foc);
         if (foc_result != FOC_RESULT_OK)
         {
-          BLDC_StopOutput(BLDC_FAULT_SENSOR, (int32_t)foc_result);
-          CAW_LOG_ERROR("AS5600 update failed, driver disabled");
+          ++sensor_read_error_count;
         }
-#if USE_SPEED_LOOP
-        else
+
+        /* 丢拍不放宽超龄判据：观测器能外推不等于反馈还有效 */
+        if (FOC_IsSensorFresh(&foc, HAL_GetTick()) == 0U)
         {
-          BLDC_UpdateOuterLoop();
+          BLDC_StopOutput(BLDC_FAULT_SENSOR, (int32_t)foc_result);
         }
-#endif
       }
-    }
-
-    if (bldc_fault_report_pending != 0U)
-    {
-      BLDC_FaultSource_t source;
-      int32_t detail;
-
-      __disable_irq();
-      source = bldc_fault_source;
-      detail = bldc_fault_detail;
-      bldc_fault_report_pending = 0U;
-      __enable_irq();
-      CAW_LOG_ERROR("BLDC fault source=%u detail=%ld", (unsigned int)source,
-                    (long)detail);
     }
 
     if (g_led_status.flag != 0U)
@@ -719,14 +877,20 @@ int main(void)
         if (result != DRV8301_OK)
         {
           BLDC_StopOutput(BLDC_FAULT_SPI, (int32_t)result);
-          CAW_LOG_ERROR("DRV8301 status read failed: %d", (int)result);
         }
         else if ((status & DRV8301_SR1_FAULT) != 0U)
         {
           BLDC_StopOutput(BLDC_FAULT_DRV8301, (int32_t)status);
-          CAW_LOG_ERROR("DRV8301 fault status=0x%03X", (unsigned int)status);
+        }
+        /* AS5600_Update() 只读角度寄存器，磁体掉落必须靠复检 STATUS 发现 */
+        else if (AS5600_CheckStatus(&G_SENSOR_A) != 0)
+        {
+          BLDC_StopOutput(BLDC_FAULT_SENSOR,
+                          (int32_t)AS5600_GetErrorCount(&G_SENSOR_A));
         }
       }
+
+      BLDC_ReportPendingFault();
     }
   }
   /* USER CODE END 3 */
@@ -828,7 +992,6 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
     float iw;
     float raw_iu;
     float raw_iv;
-    float raw_iw;
     FOC_Result_t current_result;
 #if USE_CURRENT_LOOP
     FOC_Result_t control_result;
@@ -849,20 +1012,47 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
     FOC_CommitPwmUpdate(&foc);
     raw_iu = (float)HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
     raw_iv = (float)HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_2);
-    raw_iw = (float)HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_3);
 
-    FOC_Get_Calibrated_Current(raw_iu, raw_iv, raw_iw, &iu, &iv, &iw);
+    /* 换算成电流之前先看原始码值：顶到轨的死通道折算后可能落在电流限值内 */
+    current_result = FOC_ValidateRawCurrentSamples(raw_iu, raw_iv);
+    if (current_result != FOC_RESULT_OK)
+    {
+      bldc_fault_raw_iu = raw_iu;
+      bldc_fault_raw_iv = raw_iv;
+      BLDC_TripFromIsr(BLDC_FAULT_ADC, (int32_t)current_result);
+      BLDC_UpdateMaxCycles(&adc_injected_callback_max_cycles, start);
+      return;
+    }
+
+    FOC_Get_Calibrated_Current(raw_iu, raw_iv, &iu, &iv, &iw);
+
+    /* 观测器 15 kHz 预测：把电角度从 1 ms 一级的阶梯推进到本拍，消除 d 轴
+       交叉耦合。丢拍只跳过修正，不跳过预测。 */
+    FOC_ObserverPredict(&foc);
 
     current_limit = (state == BLDC_STATE_ALIGN)
                       ? foc.alignment_current_limit
                       : FOC_CURRENT_ABS_LIMIT_A;
+    /* 本拍唯一一次 Clarke/Park，结果同时供过流快照与电流环使用 */
+    FOC_Clarke(&foc, iu, iv, iw);
+    FOC_Park(&foc, foc.cached_angle_el);
+
     current_result = FOC_ValidatePhaseCurrents(iu, iv, iw, current_limit);
     if (current_result != FOC_RESULT_OK)
     {
-      BLDC_TripFromIsr((current_result == FOC_CURRENT_ERROR_SUM)
-                         ? BLDC_FAULT_CURRENT_SUM
-                         : BLDC_FAULT_CURRENT_LIMIT,
-                       current_result);
+      /* 保存现场：i_d 远大于 i_q 说明电角度零位偏差，反之为环路增益过激 */
+      bldc_fault_iu = iu;
+      bldc_fault_iv = iv;
+      bldc_fault_iw = iw;
+      bldc_fault_id = foc.i_d;
+      bldc_fault_iq = foc.i_q;
+      bldc_fault_iq_ref = iq_ref;
+      bldc_fault_ccr1 = htim1.Instance->CCR1;   /* 采样时刻的三相占空比 */
+      bldc_fault_ccr2 = htim1.Instance->CCR2;
+      bldc_fault_ccr3 = htim1.Instance->CCR3;
+      bldc_fault_raw_iu = raw_iu;   /* 原始码值：区分真实电流与开关噪声 */
+      bldc_fault_raw_iv = raw_iv;
+      BLDC_TripFromIsr(BLDC_FAULT_CURRENT_LIMIT, current_result);
       BLDC_UpdateMaxCycles(&adc_injected_callback_max_cycles, start);
       return;
     }
@@ -894,9 +1084,8 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
 
 #if USE_CURRENT_LOOP
     now = HAL_GetTick();
-    control_result = FOC_CurrentLoopControl(&foc, 0.0f, iq_ref,
-                                             iu, iv, iw, &pid_id,
-                                             &pid_iq, now);
+    control_result = FOC_CurrentLoopUpdate(&foc, 0.0f, iq_ref, &pid_id,
+                                           &pid_iq, now);
     if (control_result != FOC_RESULT_OK)
     {
       BLDC_TripFromIsr(BLDC_FAULT_SENSOR, (int32_t)control_result);

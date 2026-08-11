@@ -2,6 +2,9 @@
 #include "delay.h"
 #include "gpio.h"
 
+/* SCL 释放后等待其变高的上限，覆盖从机时钟拉伸；超时视为总线故障 */
+#define IIC_SCL_TIMEOUT_US  200U
+
 /**
  * @brief SDA线输入模式配置
  * @param None
@@ -86,6 +89,39 @@ uint8_t SDA_Input(iic_bus_t *bus)
 }
 
 /**
+ * @brief SCL输入一位
+ * @param None
+ * @retval GPIO读入一位
+ */
+static uint8_t SCL_Input(iic_bus_t *bus)
+{
+    return (HAL_GPIO_ReadPin(bus->IIC_SCL_PORT, bus->IIC_SCL_PIN) == GPIO_PIN_SET) ? 1U : 0U;
+}
+
+/**
+ * @brief 释放SCL并等待其真正变高
+ * @note  开漏输出写1只是释放总线，从机时钟拉伸或总线短地时线上仍为低。不等待
+ *        直接读SDA会采到无效电平，且失效表现为"读回全0/全1的合法角度"。
+ * @retval SUCCESS: 时钟已变高, ERROR: 超时
+ */
+static uint8_t SCL_ReleaseAndWait(iic_bus_t *bus)
+{
+    unsigned short timeout = IIC_SCL_TIMEOUT_US;
+
+    SCL_Output(bus, 1);
+    while (SCL_Input(bus) == 0U)
+    {
+        if (0U == --timeout)
+        {
+            return ERROR;
+        }
+        delay_us(1);
+    }
+
+    return SUCCESS;
+}
+
+/**
  * @brief IIC起始信号
  * @param None
  * @retval None
@@ -128,7 +164,12 @@ unsigned char IICWaitAck(iic_bus_t *bus)
 {
     unsigned short cErrTime = 5;
     SDA_Input_Mode(bus);
-    SCL_Output(bus, 1);
+    if (SCL_ReleaseAndWait(bus) != SUCCESS)
+    {
+        SDA_Output_Mode(bus);
+        IICStop(bus);
+        return ERROR;
+    }
     while (SDA_Input(bus))
     {
         cErrTime--;
@@ -201,26 +242,38 @@ void IICSendByte(iic_bus_t *bus, unsigned char cSendByte)
 
 /**
  * @brief IIC接收一个字节
- * @param None
- * @retval 接收到的字节
+ * @param value 输出接收到的字节
+ * @retval SUCCESS: 成功, ERROR: 时钟超时(总线故障)
  */
-unsigned char IICReceiveByte(iic_bus_t *bus)
+uint8_t IICReceiveByte(iic_bus_t *bus, unsigned char *value)
 {
     unsigned char i = 8;
     unsigned char cR_Byte = 0;
+
+    if (value == NULL)
+    {
+        return ERROR;
+    }
+
     SDA_Input_Mode(bus);
     while (i--)
     {
         cR_Byte += cR_Byte;
         SCL_Output(bus, 0);
         delay_us(2);
-        SCL_Output(bus, 1);
+        if (SCL_ReleaseAndWait(bus) != SUCCESS)
+        {
+            SCL_Output(bus, 0);
+            SDA_Output_Mode(bus);
+            return ERROR;
+        }
         delay_us(1);
         cR_Byte |= SDA_Input(bus);
     }
     SCL_Output(bus, 0);
     SDA_Output_Mode(bus);
-    return cR_Byte;
+    *value = cR_Byte;
+    return SUCCESS;
 }
 
 /**
@@ -302,24 +355,13 @@ uint8_t IIC_Write_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t
  * @brief IIC读取一个字节
  * @param daddr 设备地址
  * @param reg 寄存器地址
- * @retval 返回读取到的字节
+ * @param value 输出读取到的字节
+ * @retval 返回0表示成功，1表示失败
  */
-unsigned char IIC_Read_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg)
+uint8_t IIC_Read_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg,
+                          uint8_t *value)
 {
-    unsigned char dat;
-    IICStart(bus);
-    IICSendByte(bus, daddr << 1);
-    IICWaitAck(bus);
-    IICSendByte(bus, reg);
-    IICWaitAck(bus);
-
-    IICStart(bus);
-    IICSendByte(bus, (daddr << 1) + 1);
-    IICWaitAck(bus);
-    dat = IICReceiveByte(bus);
-    IICSendNotAck(bus);
-    IICStop(bus);
-    return dat;
+    return IIC_Read_Multi_Byte(bus, daddr, reg, 1U, value);
 }
 
 /**
@@ -329,10 +371,18 @@ unsigned char IIC_Read_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg)
  * @param length 读取的字节数
  * @param buff 存储读取数据的缓冲区
  * @retval 返回0表示成功，1表示失败
+ * @note  数据阶段必须逐字节判错。总线中途失效时器件不会报错，SDA 被拉死返回
+ *        全 0x00、悬空返回全 0xFF，两者都是语法合法的角度值，上层无法分辨。
  */
 uint8_t IIC_Read_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t length, uint8_t buff[])
 {
     unsigned char i;
+
+    if ((bus == NULL) || (buff == NULL) || (length == 0U))
+    {
+        return 1;
+    }
+
     IICStart(bus);
     IICSendByte(bus, daddr << 1);
     if (IICWaitAck(bus))
@@ -356,7 +406,11 @@ uint8_t IIC_Read_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t 
     }
     for (i = 0; i < length; i++)
     {
-        buff[i] = IICReceiveByte(bus);
+        if (IICReceiveByte(bus, &buff[i]) != SUCCESS)
+        {
+            IICStop(bus);
+            return 1;
+        }
         if (i < length - 1)
         {
             IICSendAck(bus);
@@ -364,6 +418,14 @@ uint8_t IIC_Read_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t 
     }
     IICSendNotAck(bus);
     IICStop(bus);
+
+    /* STOP 后总线必须被双方释放；任一线仍为低说明器件挂死或线路短地 */
+    delay_us(1);
+    if ((SDA_Input(bus) == 0U) || (SCL_Input(bus) == 0U))
+    {
+        return 1;
+    }
+
     return 0;
 }
 

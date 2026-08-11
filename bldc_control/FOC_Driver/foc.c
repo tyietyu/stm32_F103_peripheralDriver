@@ -16,10 +16,24 @@
 #define FOC_ONE_SQRT3           0.577350269f
 #define FOC_TWO_THIRDS          0.666666667f
 #define FOC_ALIGNMENT_SWEEP     (FOC_PI / 2.0f)
-#define FOC_ALIGNMENT_STEPS     60U
+/* 每步含一次软件 I²C 读 AS5600，开销远大于 FOC_ALIGNMENT_STEP_MS。
+   20 步扫 π/2 (每步 4.5°) 已满足零位精度，同时把 I²C 次数降到 1/3。 */
+#define FOC_ALIGNMENT_STEPS     20U
 #define FOC_ALIGNMENT_STEP_MS   5U
 #define FOC_ALIGNMENT_SETTLE_MS 200U
 #define FOC_DEFAULT_SENSOR_AGE  5U
+
+/*
+ * 角度/速度跟踪观测器起始设计值（方案 22.3 / 23.1）：
+ * K1 = 2*zeta*omega_n*Ts_s = 0.452，K2 = omega_n^2*Ts_s = 63.2。
+ * omega_n 必须 >= 2 倍速度环带宽；提高前先确认观测速度抖动仍达标。
+ */
+#define FOC_OBSERVER_OMEGA_N     (2.0f * FOC_PI * 40.0f)
+#define FOC_OBSERVER_ZETA        0.9f
+#define FOC_OBSERVER_CORRECT_TS  1.0e-3f
+#define FOC_OBSERVER_PREDICT_TS  (1.0f / (float)PWM_FREQ)
+/* 观测速度合理性钳位：远高于本电机工况，仅用于阻止异常值污染多圈计数 */
+#define FOC_OBSERVER_OMEGA_LIMIT 200.0f
 
 #define FOC_CONSTRAIN(value, low, high) \
   ((value) < (low) ? (low) : ((value) > (high) ? (high) : (value)))
@@ -27,7 +41,8 @@
 static float FOC_GetEffectiveVoltageLimit(const FOC_T *hfoc);
 static void FOC_SetPwm(FOC_T *hfoc, float ua, float ub, float uc);
 static void FOC_SetVoltageDqWithTrig(FOC_T *hfoc, float ud, float uq,
-                                     float sin_angle, float cos_angle);
+                                     float sin_angle, float cos_angle,
+                                     float *ud_applied, float *uq_applied);
 static FOC_Result_t FOC_AlignmentStep(FOC_T *hfoc, float voltage,
                                         float angle_el, uint32_t start_tick,
                                         uint32_t timeout_ms);
@@ -41,11 +56,6 @@ float _normalizeAngle(float angle)
   float normalized = fmodf(angle, FOC_TWO_PI);
 
   return (normalized >= 0.0f) ? normalized : (normalized + FOC_TWO_PI);
-}
-
-float _openloop_electricalAngle(float shaft_angle, int pole_pairs)
-{
-  return shaft_angle * (float)pole_pairs;
 }
 
 float FOC_SensorAngleToElectricalAngle(const FOC_T *hfoc, float sensor_angle)
@@ -183,7 +193,8 @@ static void FOC_SetPwm(FOC_T *hfoc, float ua, float ub, float uc)
 }
 
 static void FOC_SetVoltageDqWithTrig(FOC_T *hfoc, float ud, float uq,
-                                     float sin_angle, float cos_angle)
+                                     float sin_angle, float cos_angle,
+                                     float *ud_applied, float *uq_applied)
 {
   float limit;
   float magnitude;
@@ -194,6 +205,10 @@ static void FOC_SetVoltageDqWithTrig(FOC_T *hfoc, float ud, float uq,
   float ub;
   float uc;
 
+  /*
+   * 全部电压限幅集中在此处的矢量圆限幅：保持 dq 电压矢量方向不变。PID 内部
+   * 不再做分轴方形限幅，被削掉的量由 FOC_CurrentLoopUpdate() 回传给条件积分。
+   */
   limit = FOC_GetEffectiveVoltageLimit(hfoc);
   magnitude = sqrtf(ud * ud + uq * uq);
   if ((magnitude > limit) && (magnitude > 0.0f))
@@ -201,6 +216,13 @@ static void FOC_SetVoltageDqWithTrig(FOC_T *hfoc, float ud, float uq,
     scale = limit / magnitude;
     ud *= scale;
     uq *= scale;
+    hfoc->voltage_saturated = 1U;
+    hfoc->voltage_saturation_sign = (uq >= 0.0f) ? (int8_t)1 : (int8_t)-1;
+  }
+  else
+  {
+    hfoc->voltage_saturated = 0U;
+    hfoc->voltage_saturation_sign = 0;
   }
 
   u_alpha = ud * cos_angle - uq * sin_angle;
@@ -214,6 +236,15 @@ static void FOC_SetVoltageDqWithTrig(FOC_T *hfoc, float ud, float uq,
   hfoc->u_alpha = u_alpha;
   hfoc->u_beta = u_beta;
   FOC_SetPwm(hfoc, ua, ub, uc);
+
+  if (ud_applied != NULL)
+  {
+    *ud_applied = ud;
+  }
+  if (uq_applied != NULL)
+  {
+    *uq_applied = uq;
+  }
 }
 
 FOC_Result_t FOC_Closeloop_Init(FOC_T *hfoc, TIM_HandleTypeDef *tim,
@@ -234,6 +265,9 @@ FOC_Result_t FOC_Closeloop_Init(FOC_T *hfoc, TIM_HandleTypeDef *tim,
   hfoc->dir = (dir >= 0) ? 1 : -1;
   hfoc->pp = pp;
   hfoc->sensor_max_age_ms = FOC_DEFAULT_SENSOR_AGE;
+  FOC_ObserverInit(hfoc, FOC_OBSERVER_OMEGA_N, FOC_OBSERVER_ZETA,
+                   FOC_OBSERVER_CORRECT_TS, FOC_OBSERVER_PREDICT_TS,
+                   FOC_OBSERVER_OMEGA_LIMIT);
   return FOC_RESULT_OK;
 }
 
@@ -267,7 +301,7 @@ void FOC_SetTorque(FOC_T *hfoc, float uq, float angle_el)
 
   normalized_angle = _normalizeAngle(angle_el);
   FOC_SetVoltageDqWithTrig(hfoc, 0.0f, uq, sinf(normalized_angle),
-                           cosf(normalized_angle));
+                           cosf(normalized_angle), NULL, NULL);
 }
 
 void FOC_Bind_SensorUpdate(FOC_T *hfoc, FUNC_SENSOR_UPDATE sensor_update)
@@ -304,8 +338,26 @@ void FOC_Bind_SensorGetVelocity(FOC_T *hfoc,
   }
 }
 
-void FOC_UpdateCachedSensorAngle(FOC_T *hfoc, float mechanical_angle,
-                                 uint32_t success_tick)
+void FOC_ObserverInit(FOC_T *hfoc, float omega_n, float zeta,
+                      float correct_ts, float predict_ts, float omega_limit)
+{
+  if ((hfoc == NULL) || (omega_n <= 0.0f) || (correct_ts <= 0.0f) ||
+      (predict_ts <= 0.0f) || (omega_limit <= 0.0f))
+  {
+    return;
+  }
+
+  hfoc->obs_k1 = 2.0f * zeta * omega_n * correct_ts;
+  hfoc->obs_k2 = omega_n * omega_n * correct_ts;
+  hfoc->obs_predict_ts = predict_ts;
+  hfoc->obs_omega_limit = omega_limit;
+  hfoc->obs_theta_hat = 0.0f;
+  hfoc->obs_omega_hat = 0.0f;
+  hfoc->obs_turns = 0;
+  hfoc->obs_last_correct_tick = 0U;
+}
+
+void FOC_ObserverReset(FOC_T *hfoc, float mechanical_angle, uint32_t now)
 {
   uint32_t primask;
 
@@ -316,9 +368,125 @@ void FOC_UpdateCachedSensorAngle(FOC_T *hfoc, float mechanical_angle,
 
   primask = __get_PRIMASK();
   __disable_irq();
-  hfoc->sensor_valid = 0U;
+  hfoc->obs_theta_hat = _normalizeAngle(mechanical_angle);
+  hfoc->obs_omega_hat = 0.0f;
+  hfoc->obs_turns = 0;
+  hfoc->obs_last_correct_tick = now;
   hfoc->cached_angle_el = FOC_SensorAngleToElectricalAngle(hfoc,
-                                                           mechanical_angle);
+                                                           hfoc->obs_theta_hat);
+  if (primask == 0U)
+  {
+    __enable_irq();
+  }
+}
+
+/*
+ * 预测：在 15 kHz ADC 注入 ISR 内调用。该 ISR 抢占优先级最高，其读改写相对
+ * 前台的修正是原子的，无需再关中断。
+ * 电角度按增量推进而非由 theta_hat 重算，避免在 15 kHz 路径上执行 fmodf；
+ * 每次跨越 2pi 才回退到 _normalizeAngle()，且每拍都会在 1 kHz 修正处重锚定。
+ */
+void FOC_ObserverPredict(FOC_T *hfoc)
+{
+  float angle_el;
+  float omega;
+  float theta;
+
+  omega = hfoc->obs_omega_hat;
+  theta = hfoc->obs_theta_hat + omega * hfoc->obs_predict_ts;
+  if (theta >= FOC_TWO_PI)
+  {
+    theta -= FOC_TWO_PI;
+    ++hfoc->obs_turns;
+  }
+  else if (theta < 0.0f)
+  {
+    theta += FOC_TWO_PI;
+    --hfoc->obs_turns;
+  }
+  hfoc->obs_theta_hat = theta;
+
+  angle_el = hfoc->cached_angle_el +
+             (float)(hfoc->dir * hfoc->pp) * omega * hfoc->obs_predict_ts;
+  if ((angle_el >= FOC_TWO_PI) || (angle_el < 0.0f))
+  {
+    angle_el = _normalizeAngle(angle_el);
+  }
+  hfoc->cached_angle_el = angle_el;
+}
+
+void FOC_ObserverSnapshot(const FOC_T *hfoc, float *position, float *velocity)
+{
+  uint32_t primask;
+
+  if (hfoc == NULL)
+  {
+    return;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if (position != NULL)
+  {
+    *position = (float)hfoc->obs_turns * FOC_TWO_PI + hfoc->obs_theta_hat;
+  }
+  if (velocity != NULL)
+  {
+    *velocity = hfoc->obs_omega_hat;
+  }
+  if (primask == 0U)
+  {
+    __enable_irq();
+  }
+}
+
+void FOC_UpdateCachedSensorAngle(FOC_T *hfoc, float mechanical_angle,
+                                 uint32_t success_tick)
+{
+  float error;
+  float omega;
+  float theta;
+  uint32_t primask;
+
+  if (hfoc == NULL)
+  {
+    return;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  hfoc->sensor_valid = 0U;
+
+  /* 单圈误差归一化到 (-pi, pi]，跨 0/4095 边界无需额外判定 */
+  error = mechanical_angle - hfoc->obs_theta_hat;
+  if (error > FOC_PI)
+  {
+    error -= FOC_TWO_PI;
+  }
+  else if (error <= -FOC_PI)
+  {
+    error += FOC_TWO_PI;
+  }
+
+  theta = hfoc->obs_theta_hat + hfoc->obs_k1 * error;
+  if (theta >= FOC_TWO_PI)
+  {
+    theta -= FOC_TWO_PI;
+    ++hfoc->obs_turns;
+  }
+  else if (theta < 0.0f)
+  {
+    theta += FOC_TWO_PI;
+    --hfoc->obs_turns;
+  }
+  hfoc->obs_theta_hat = theta;
+
+  omega = hfoc->obs_omega_hat + hfoc->obs_k2 * error;
+  hfoc->obs_omega_hat = FOC_CONSTRAIN(omega, -hfoc->obs_omega_limit,
+                                      hfoc->obs_omega_limit);
+  hfoc->obs_last_correct_tick = success_tick;
+
+  hfoc->cached_angle_el = FOC_SensorAngleToElectricalAngle(hfoc, theta);
   hfoc->sensor_last_success_tick = success_tick;
   __DMB();
   hfoc->sensor_valid = 1U;
@@ -332,7 +500,7 @@ FOC_Result_t FOC_SensorUpdate(FOC_T *hfoc)
 {
   uint32_t now;
 
-
+  /* 对齐流程内使用：此时观测器尚未投入，单次读失败即视为对齐失败 */
   if (hfoc->Sensor_Update() != 0)
   {
     hfoc->sensor_valid = 0U;
@@ -384,9 +552,11 @@ static FOC_Result_t FOC_AlignmentHold(FOC_T *hfoc, float voltage,
                                       uint32_t timeout_ms)
 {
   FOC_Result_t result;
-  uint32_t elapsed = 0U;
+  uint32_t hold_start = HAL_GetTick();
 
-  while (elapsed < duration_ms)
+  /* 以真实时钟判定保持时长：每步除 HAL_Delay 外还含一次软件 I²C 读取，
+     按 FOC_ALIGNMENT_STEP_MS 累加会严重低估实际耗时。 */
+  while ((uint32_t)(HAL_GetTick() - hold_start) < duration_ms)
   {
     result = FOC_AlignmentStep(hfoc, voltage, angle_el, start_tick,
                                timeout_ms);
@@ -394,7 +564,6 @@ static FOC_Result_t FOC_AlignmentHold(FOC_T *hfoc, float voltage,
     {
       return result;
     }
-    elapsed += FOC_ALIGNMENT_STEP_MS;
   }
 
   return FOC_RESULT_OK;
@@ -488,13 +657,16 @@ FOC_Result_t FOC_AlignmentSensor(FOC_T *hfoc, float alignment_voltage,
 
   hfoc->zero_electric_angle = _normalizeAngle(
     (float)(hfoc->dir * hfoc->pp) * hfoc->Sensor_GetOnceAngle());
+  /* 进入 RUN 之前复位观测器：theta_hat = 实测机械角，omega_hat = 0，
+     避免对齐期间的强制转动在观测速度里留下残值。 */
+  FOC_ObserverReset(hfoc, hfoc->Sensor_GetOnceAngle(), HAL_GetTick());
   FOC_UpdateCachedSensorAngle(hfoc, hfoc->Sensor_GetOnceAngle(),
                               HAL_GetTick());
   FOC_SetTorque(hfoc, 0.0f, FOC_THREE_PI_2);
   return FOC_RESULT_OK;
 }
 
-#if USE_CURRENT_LOOP
+/* 坐标变换不依赖 PID，过流快照在未启用电流环时同样需要，故不做宏裁剪 */
 void FOC_Clarke(FOC_T *hfoc, float ia, float ib, float ic)
 {
   hfoc->i_a = ia;
@@ -506,20 +678,18 @@ void FOC_Clarke(FOC_T *hfoc, float ia, float ib, float ic)
 
 void FOC_Park(FOC_T *hfoc, float angle_el)
 {
-  float cos_angle;
-  float sin_angle;
-
   if (hfoc == NULL)
   {
     return;
   }
 
-  sin_angle = sinf(angle_el);
-  cos_angle = cosf(angle_el);
-  hfoc->i_d = hfoc->i_alpha * cos_angle + hfoc->i_beta * sin_angle;
-  hfoc->i_q = -hfoc->i_alpha * sin_angle + hfoc->i_beta * cos_angle;
+  hfoc->sin_el = sinf(angle_el);
+  hfoc->cos_el = cosf(angle_el);
+  hfoc->i_d = hfoc->i_alpha * hfoc->cos_el + hfoc->i_beta * hfoc->sin_el;
+  hfoc->i_q = -hfoc->i_alpha * hfoc->sin_el + hfoc->i_beta * hfoc->cos_el;
 }
 
+#if USE_CURRENT_LOOP
 void FOC_SetTorqueWithCurrent(FOC_T *hfoc, float ud, float uq, float angle_el)
 {
   float normalized_angle;
@@ -531,35 +701,33 @@ void FOC_SetTorqueWithCurrent(FOC_T *hfoc, float ud, float uq, float angle_el)
 
   normalized_angle = _normalizeAngle(angle_el);
   FOC_SetVoltageDqWithTrig(hfoc, ud, uq, sinf(normalized_angle),
-                           cosf(normalized_angle));
+                           cosf(normalized_angle), NULL, NULL);
 }
 
-FOC_Result_t FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
-                                    float ia, float ib, float ic,
-                                    void *pid_id, void *pid_iq, uint32_t now)
+/*
+ * 电流环。调用前必须在同一拍内先执行 FOC_Clarke() + FOC_Park(cached_angle_el)，
+ * 本函数直接复用其 i_d/i_q 与 sin/cos，不重复计算三角函数。
+ */
+FOC_Result_t FOC_CurrentLoopUpdate(FOC_T *hfoc, float id_ref, float iq_ref,
+                                   void *pid_id, void *pid_iq, uint32_t now)
 {
-  float angle_el;
-  float cos_angle;
-  float sin_angle;
   float ud;
+  float ud_applied;
   float uq;
+  float uq_applied;
 
   if (FOC_IsSensorFresh(hfoc, now) == 0U)
   {
     return FOC_ERROR_SENSOR_STALE;
   }
 
-  angle_el = hfoc->cached_angle_el;
-  sin_angle = sinf(angle_el);
-  cos_angle = cosf(angle_el);
-
-  FOC_Clarke(hfoc, ia, ib, ic);
-  hfoc->i_d = hfoc->i_alpha * cos_angle + hfoc->i_beta * sin_angle;
-  hfoc->i_q = -hfoc->i_alpha * sin_angle + hfoc->i_beta * cos_angle;
-
   ud = PID_Calc((PID_T *)pid_id, id_ref - hfoc->i_d);
   uq = PID_Calc((PID_T *)pid_iq, iq_ref - hfoc->i_q);
-  FOC_SetVoltageDqWithTrig(hfoc, ud, uq, sin_angle, cos_angle);
+  FOC_SetVoltageDqWithTrig(hfoc, ud, uq, hfoc->sin_el, hfoc->cos_el,
+                           &ud_applied, &uq_applied);
+  /* 圆限幅削掉的量回传给条件积分判据，否则圆限幅路径存在积分饱和 */
+  PID_ApplyExternalClip((PID_T *)pid_id, ud - ud_applied, ud_applied);
+  PID_ApplyExternalClip((PID_T *)pid_iq, uq - uq_applied, uq_applied);
   return FOC_RESULT_OK;
 }
 #endif

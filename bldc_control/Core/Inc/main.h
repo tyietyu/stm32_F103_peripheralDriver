@@ -100,8 +100,9 @@ void Error_Handler(void);
 #define VOLTAGE_DIVIDER_RATIO   8.0f 
 #define ADC_VOLTAGE_FACTOR      (ADC_REF_VOLTAGE / ADC_RESOLUTION * VOLTAGE_DIVIDER_RATIO)
 
-/* 21 MHz ADC: 3 channels x (15 sample + 12 conversion) cycles x 8 TIM clocks. */
-#define PWM_ADC_SEQUENCE_TICKS       648U
+/* 21 MHz ADC: 2 channels x (15 sample + 12 conversion) cycles x 8 TIM clocks
+   = 432 tick = 2.571 us。必须与 adc.c 的 InjectedSamplingTime 保持一致。 */
+#define PWM_ADC_SEQUENCE_TICKS       432U
 #define PWM_ADC_END_MARGIN_TICKS     100U
 #define PWM_ADC_PEAK_BLANKING_TICKS  200U
 #define PWM_MIN_COMPARE              PWM_ADC_PEAK_BLANKING_TICKS
@@ -109,6 +110,18 @@ void Error_Handler(void);
                                       PWM_ADC_END_MARGIN_TICKS - \
                                       PWM_ADC_PEAK_BLANKING_TICKS)
 #define PWM_ADC_TRIGGER_LATEST       (PWM_PERIOD - PWM_ADC_PEAK_BLANKING_TICKS)
+
+/*
+ * 采样窗口的真正约束是"转换结束点仍在低侧共同导通窗口内"：
+ *   trigger + SEQUENCE <= 2*ARR - max_compare - END_MARGIN
+ * FOC_SetPwm() 的运行时判据把 SEQUENCE 加在触发下界上，方向与此相反，靠
+ * PWM_ADC_TRIGGER_LATEST 取值保守才兜住。此处按最坏情况(trigger 取最晚、
+ * max_compare 取最大)做编译期校验，避免下次改 ADC 配置再次静默失效。
+ */
+#if ((PWM_ADC_TRIGGER_LATEST + PWM_ADC_SEQUENCE_TICKS) > \
+     (2 * PWM_PERIOD - PWM_MAX_COMPARE - PWM_ADC_END_MARGIN_TICKS))
+#error "ADC injected sequence overruns the low-side conduction window"
+#endif
 
 /* 参考值单位：iq 为 A，速度为 rad/s，位置为累计机械角 rad。 */
 int BLDC_SetIqReference(float reference);
@@ -141,8 +154,6 @@ void BLDC_Stop(void);
 #define I_CHANNEL_U_GPIO_Port GPIOA
 #define I_CHANNEL_V_Pin GPIO_PIN_4
 #define I_CHANNEL_V_GPIO_Port GPIOA
-#define I_CHANNEL_W_Pin GPIO_PIN_5
-#define I_CHANNEL_W_GPIO_Port GPIOA
 #define LED_Pin GPIO_PIN_2
 #define LED_GPIO_Port GPIOB
 #define SPI2_CS_Pin GPIO_PIN_12

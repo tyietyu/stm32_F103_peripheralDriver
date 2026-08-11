@@ -46,10 +46,16 @@ static volatile uint32_t gs_fac_us = 0;        /**< fac cnt */
  */
 uint8_t delay_init(void)
 {
-    /* usr HCLK */
-    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-    /* set fac 根据HCLK的主频设置 */
-    gs_fac_us = 168;
+    uint32_t hclk = HAL_RCC_GetHCLKFreq();
+    uint32_t clksource = SysTick->CTRL & SysTick_CTRL_CLKSOURCE_Msk;
+     if (clksource != 0U)
+    {
+        gs_fac_us = hclk / 1000000U; 
+    }
+    else
+    {
+        gs_fac_us = hclk / 8U / 1000000U; 
+    }
     return 0;
 }
 

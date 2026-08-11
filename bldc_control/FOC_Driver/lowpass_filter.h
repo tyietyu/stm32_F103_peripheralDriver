@@ -11,13 +11,13 @@
 typedef struct {
   float tf;
   float prev_y;
-  unsigned long prev_timestamp;
 } LOWPASS_FILTER_T;
 
 void LOWPASS_FILTER_Init(LOWPASS_FILTER_T *f, float time_const);
-float LOWPASS_FILTER_Calc(LOWPASS_FILTER_T *f, float x);
+/*
+ * 只保留显式传 dt 的接口。原 LOWPASS_FILTER_Calc() 按 HAL_GetTick 差值取 dt，
+ * 在 1 ms tick 分辨率下 delta 可能为 0，会返回原值且不更新状态，滤波被静默旁路。
+ */
 float LOWPASS_FILTER_CalcWithDt(LOWPASS_FILTER_T *f, float x, float dt_s);
 
 #endif
-
-

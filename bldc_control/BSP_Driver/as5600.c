@@ -26,6 +26,41 @@ static int AS5600_ReadRegister(AS5600_T *sensor, uint8_t reg, uint8_t *value)
   return (IIC_Read_Multi_Byte(sensor->i2c_ins, AS5600_RAW_ADDR, reg, 1U, value) == 0U) ? 0 : -1;
 }
 
+/* CONF 为易失寄存器，每次上电写入，不使用 BURN_SETTING，不消耗 ZMCO 次数 */
+static int AS5600_WriteRegisterVerified(AS5600_T *sensor, uint8_t reg,
+                                        uint8_t value, uint8_t mask)
+{
+  uint8_t readback = 0U;
+
+  if (IIC_Write_One_Byte(sensor->i2c_ins, AS5600_RAW_ADDR, reg, value) != 0U)
+  {
+    return -1;
+  }
+
+  delay_us(500U);
+  if (AS5600_ReadRegister(sensor, reg, &readback) != 0)
+  {
+    return -1;
+  }
+
+  return ((readback & mask) == (value & mask)) ? 0 : -1;
+}
+
+/* 磁体状态判定：MD 必须置位，ML/MH 必须清零 */
+static int AS5600_ValidateStatus(uint8_t status)
+{
+  if ((status & AS5600_STATUS_MAGNET_DETECT) == 0U)
+  {
+    return -1;
+  }
+  if ((status & (AS5600_STATUS_MAGNET_WEAK | AS5600_STATUS_MAGNET_STRONG)) != 0U)
+  {
+    return -1;
+  }
+
+  return 0;
+}
+
 static int AS5600_ReadRawAngle(AS5600_T *sensor, uint16_t *raw_angle)
 {
   uint8_t buffer[2] = {0U};
@@ -56,7 +91,6 @@ static void AS5600_RecordReadError(AS5600_T *sensor)
 
 static void AS5600_PublishSample(AS5600_T *sensor, uint16_t raw_angle, uint32_t now)
 {
-  sensor->previous_raw_angle = sensor->raw_angle;
   sensor->raw_angle = raw_angle;
   sensor->mechanical_angle = (float)raw_angle * AS5600_TWO_PI /
                              (float)AS5600_RESOLUTION;
@@ -79,7 +113,6 @@ int AS5600_Init(AS5600_T *sensor)
 
   sensor->i2c_ins = &i2c_bus;
   sensor->raw_angle = 0U;
-  sensor->previous_raw_angle = 0U;
   sensor->mechanical_angle = 0.0f;
   sensor->full_angle = 0.0f;
   sensor->rotation_offset = 0.0f;
@@ -97,12 +130,24 @@ int AS5600_Init(AS5600_T *sensor)
   }
 
   if ((AS5600_ReadRegister(sensor, AS5600_STATUS_REGISTER, &status) != 0) ||
-      ((status & AS5600_STATUS_MAGNET_DETECT) == 0U))
+      (AS5600_ValidateStatus(status) != 0))
   {
     AS5600_RecordReadError(sensor);
     return -1;
   }
   sensor->magnet_detected = true;
+
+  /* 慢速滤波必须显式配置：上电默认 16x 的阶跃延迟对 1 kHz 修正不可接受 */
+  if ((AS5600_WriteRegisterVerified(sensor, AS5600_CONF_LOW_REGISTER,
+                                    AS5600_CONF_LOW_VALUE,
+                                    AS5600_CONF_LOW_MASK) != 0) ||
+      (AS5600_WriteRegisterVerified(sensor, AS5600_CONF_HIGH_REGISTER,
+                                    AS5600_CONF_HIGH_VALUE,
+                                    AS5600_CONF_HIGH_MASK) != 0))
+  {
+    AS5600_RecordReadError(sensor);
+    return -1;
+  }
 
   if (AS5600_ReadRawAngle(sensor, &raw_angle) != 0)
   {
@@ -112,7 +157,6 @@ int AS5600_Init(AS5600_T *sensor)
 
   now = HAL_GetTick();
   AS5600_PublishSample(sensor, raw_angle, now);
-  sensor->previous_raw_angle = raw_angle;
   sensor->velocity_previous_angle = sensor->full_angle;
   sensor->velocity_previous_tick = now;
   return 0;
@@ -167,11 +211,39 @@ int AS5600_Update(AS5600_T *sensor)
   return 0;
 }
 
+/*
+ * 运行期磁体状态复检。AS5600_Update() 只读 RAW_ANGLE，磁体掉落后器件仍会返回
+ * 语法合法的角度值，必须由低频任务定期查 STATUS 才能发现。
+ */
+int AS5600_CheckStatus(AS5600_T *sensor)
+{
+  uint8_t status = 0U;
+
+  if (sensor == NULL)
+  {
+    return -1;
+  }
+
+  if (AS5600_ReadRegister(sensor, AS5600_STATUS_REGISTER, &status) != 0)
+  {
+    AS5600_RecordReadError(sensor);
+    return -1;
+  }
+
+  if (AS5600_ValidateStatus(status) != 0)
+  {
+    sensor->magnet_detected = false;
+    sensor->valid = false;
+    return -1;
+  }
+
+  return 0;
+}
+
 uint16_t AS5600_GetRawAngle(const AS5600_T *sensor)
 {
   return (sensor != NULL) ? sensor->raw_angle : 0U;
 }
-
 float AS5600_GetOnceAngle(const AS5600_T *sensor)
 {
   return (sensor != NULL) ? sensor->mechanical_angle : 0.0f;
@@ -182,6 +254,11 @@ float AS5600_GetAngle(const AS5600_T *sensor)
   return (sensor != NULL) ? sensor->full_angle : 0.0f;
 }
 
+/*
+ * 相邻两次采样的差分测速。dt 时基为 HAL_GetTick，分辨率 1 ms，与 TIM2 相位漂移
+ * 叠加软件 I2C 抖动后 dt 误差可达 +-100%，且量化台阶 1.534 rad/s 已达速度参考
+ * 满量程的 15%。仅供调试观察，速度环反馈必须走 FOC 的跟踪观测器。
+ */
 float AS5600_GetVelocity(AS5600_T *sensor)
 {
   float dt;

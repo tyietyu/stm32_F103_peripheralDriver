@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Read(//D:/Program Files (x86)/Keil_v5/UV4/**)",
+      "Read(//D:/Program Files/Keil_v5/UV4/**)",
+      "Read(//D:/Program Files \\\\\\(x86\\\\\\)/Keil_v5/UV4/**)",
+      "Bash(which arm-none-eabi-gcc *)",
+      "Read(//D:/Program Files (x86)/Keil_v5/UV4/**)",
+      "Bash(arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DUSE_HAL_DRIVER -DSTM32F407xx -ICore/Inc -IFOC_Driver -IBSP_Driver -IDrivers/STM32F4xx_HAL_Driver/Inc -IDrivers/STM32F4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32F4xx/Include -IDrivers/CMSIS/Include -Wall -fsyntax-only FOC_Driver/foc_hal.c)",
+      "Bash(arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DUSE_HAL_DRIVER -DSTM32F407xx -ICore/Inc -IFOC_Driver -IBSP_Driver -IDrivers/STM32F4xx_HAL_Driver/Inc -IDrivers/STM32F4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32F4xx/Include -IDrivers/CMSIS/Include -Wall -fsyntax-only Core/Src/main.c)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DUSE_HAL_DRIVER -DSTM32F407xx -ICore/Inc -IFOC_Driver -IBSP_Driver -IDrivers/STM32F4xx_HAL_Driver/Inc -IDrivers/STM32F4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32F4xx/Include -IDrivers/CMSIS/Include -Wall -Wshadow -fsyntax-only Core/Src/main.c)",
+      "Bash(arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -DUSE_HAL_DRIVER -DSTM32F407xx -ICore/Inc -IFOC_Driver -IBSP_Driver -IDrivers/STM32F4xx_HAL_Driver/Inc -IDrivers/STM32F4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32F4xx/Include -IDrivers/CMSIS/Include -Wall -Wshadow -Wformat -fsyntax-only Core/Src/main.c)",
+      "Bash(ls \"/e/0001_LCWork/project_STM32/stm32_F103_peripheralDriver/bldc_control/MDK-ARM/\" 2>/dev/null; which UV4 armclang 2>/dev/null; ls \"/D:/Program Files (x86)/Keil_v5/UV4/UV4.exe\" 2>/dev/null)",
+      "Bash(grep -n \"不执行速度环和位置环\\\\|不增加速度、位置和其他运动控制模式\\\\|只保留 \\\\`iq_ref\\\\` 电流模式\\\\|满足基本容差\\\\|三路 offset 校准通过\\\\|TIMING（仅比较触发）\\\\|接近谷值\" foc_driver_config_review_plan.md)",
+      "Bash(git mv *)",
+      "Bash(cd \"e:/0001_LCWork/project_STM32/stm32_F103_peripheralDriver/bldc_control\" && grep -o '<IncludePath>[^<]*</IncludePath>' MDK-ARM/bldc_control.uvprojx | head -3; echo \"---DEFINES---\"; grep -o '<Define>[^<]*</Define>' MDK-ARM/bldc_control.uvprojx | head -3; echo \"---DRIVERS---\"; ls .. | head; ls ../Drivers 2>/dev/null | head)",
+      "Read(//e/0001_LCWork/project_STM32/stm32_F103_peripheralDriver/**)"
     ]
   }
 }

@@ -14,7 +14,6 @@ typedef enum
 {
   FOC_RESULT_OK = 0,
   FOC_ERROR_CURRENT_LIMIT = -1,
-  FOC_ERROR_CURRENT_SUM = -2,
 
   FOC_ERROR_INVALID_ARGUMENT = -10,
   FOC_ERROR_SENSOR_NOT_BOUND = -11,
@@ -36,7 +35,8 @@ typedef enum
   FOC_ERROR_ADC_CONVERSION_FAILED = -44,
   FOC_ERROR_CURRENT_OFFSET_INVALID = -45,
   FOC_ERROR_CURRENT_GAIN_INVALID = -46,
-  FOC_ERROR_CURRENT_CALIBRATION_INVALID = -47
+  FOC_ERROR_CURRENT_CALIBRATION_INVALID = -47,
+  FOC_ERROR_CURRENT_RAW_SATURATED = -48
 } FOC_Result_t;
 
 typedef struct
@@ -46,8 +46,6 @@ typedef struct
   float voltage_power_supply;
   float voltage_limit;
   float alignment_current_limit;
-  float shaft_angle;
-  uint32_t open_loop_timestamp;
   float zero_electric_angle;
   float u_alpha;
   float u_beta;
@@ -65,6 +63,9 @@ typedef struct
   float i_a;
   float i_b;
   float i_c;
+  /* Park 变换的 sin/cos 缓存，同一拍内供电流环复用，避免重复三角函数 */
+  float sin_el;
+  float cos_el;
   volatile float cached_angle_el;
   volatile uint32_t sensor_last_success_tick;
   uint32_t sensor_max_age_ms;
@@ -72,6 +73,23 @@ typedef struct
   volatile uint8_t sensor_valid;
   volatile uint8_t current_sample_valid;
   volatile uint8_t next_sample_valid;
+  /* dq 电压矢量圆限幅是否生效，以及被限幅时 uq 的符号（供速度环抗饱和） */
+  volatile uint8_t voltage_saturated;
+  volatile int8_t voltage_saturation_sign;
+
+  /*
+   * 角度/速度跟踪观测器（PLL 型）：15 kHz 预测、1 kHz 修正。
+   * obs_theta_hat 归一化到 [0, 2pi)，整圈数单独用 obs_turns 记，避免多圈连续
+   * 累计后 float32 有效位不足（1000 转时 eps 已达 5e-4 rad，接近单拍增量）。
+   */
+  volatile float obs_theta_hat;
+  volatile float obs_omega_hat;
+  volatile int32_t obs_turns;
+  volatile uint32_t obs_last_correct_tick;
+  float obs_k1;
+  float obs_k2;
+  float obs_predict_ts;
+  float obs_omega_limit;
 
   int dir;
   int pp;
@@ -104,19 +122,30 @@ void FOC_Bind_SensorGetAngle(FOC_T *hfoc, FUNC_SENSOR_GET_ANGLE sensor_get_angle
 void FOC_Bind_SensorGetVelocity(FOC_T *hfoc,
                                 FUNC_SENSOR_GET_VELOCITY sensor_get_velocity);
 
-#if USE_CURRENT_LOOP
+/*
+ * 角度/速度跟踪观测器。omega_n/zeta 给出增益，correct_ts 为修正周期(1 ms)，
+ * predict_ts 为预测周期(1/15000 s)，omega_limit 为观测速度的合理性钳位。
+ */
+void FOC_ObserverInit(FOC_T *hfoc, float omega_n, float zeta,
+                      float correct_ts, float predict_ts, float omega_limit);
+void FOC_ObserverReset(FOC_T *hfoc, float mechanical_angle, uint32_t now);
+void FOC_ObserverPredict(FOC_T *hfoc);
+void FOC_ObserverSnapshot(const FOC_T *hfoc, float *position, float *velocity);
+
+/* 坐标变换不依赖 PID，过流快照在未启用电流环时同样需要 */
 void FOC_Clarke(FOC_T *hfoc, float ia, float ib, float ic);
 void FOC_Park(FOC_T *hfoc, float angle_el);
+
+#if USE_CURRENT_LOOP
 void FOC_SetTorqueWithCurrent(FOC_T *hfoc, float ud, float uq, float angle_el);
-FOC_Result_t FOC_CurrentLoopControl(FOC_T *hfoc, float id_ref, float iq_ref,
-                                    float ia, float ib, float ic,
-                                    void *pid_id, void *pid_iq, uint32_t now);
+/* 需在同一拍先调用 FOC_Clarke() + FOC_Park()，本函数复用其 i_d/i_q 与 sin/cos */
+FOC_Result_t FOC_CurrentLoopUpdate(FOC_T *hfoc, float id_ref, float iq_ref,
+                                   void *pid_id, void *pid_iq, uint32_t now);
 #endif
 void FOC_CommitPwmUpdate(FOC_T *hfoc);
 uint8_t FOC_IsCurrentSampleValid(const FOC_T *hfoc);
 uint8_t FOC_IsNextCurrentSampleValid(const FOC_T *hfoc);
 
 float _normalizeAngle(float angle);
-float _openloop_electricalAngle(float shaft_angle, int pole_pairs);
 
 #endif

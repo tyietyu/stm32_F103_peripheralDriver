@@ -37,7 +37,7 @@
 "bldc_control\drv8301.o"
 "bldc_control\foc.o"
 "bldc_control\foc_hal.o"
-"bldc_control\foc_test.o"
+"bldc_control\foc_outer_loop.o"
 "bldc_control\lowpass_filter.o"
 "bldc_control\pid.o"
 --library_type=microlib --strict --scatter "bldc_control\bldc_control.sct"
