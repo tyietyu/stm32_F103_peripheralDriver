@@ -36,6 +36,7 @@
 #include "lowpass_filter.h"
 #include "pid.h"
 #include "drv8301.h"
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -90,10 +91,10 @@ float phase_voltage_calibration_gain[ADC_CHANNEL_NUM] = {1.0f, 1.0f, 1.0f};
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 /* 与文档设计值一致；提高前必须先在台架上确认电机允许的连续电流 */
-#define FOC_INITIAL_IQ_REF               0.10f
+#define FOC_INITIAL_IQ_REF               0.02f
 #define FOC_IQ_REF_LIMIT                 0.30f
-#define FOC_CURRENT_P                    4.00f
-#define FOC_CURRENT_I                    2000.00f
+#define FOC_CURRENT_P                    0.30f
+#define FOC_CURRENT_I                    0.00f
 #define FOC_CURRENT_D                    0.00f
 /* 电流环带宽由电压限幅约束即可，无需速率限幅：15kHz 下 200V/s 每拍仅允许输出
    变化 0.013V，远慢于 I=2000 的积分累积速度，会导致积分饱和后持续超调过流。 */
@@ -120,6 +121,17 @@ float phase_voltage_calibration_gain[ADC_CHANNEL_NUM] = {1.0f, 1.0f, 1.0f};
 #define FOC_ALIGNMENT_CURRENT_LIMIT_A    1.00f
 #define FOC_ALIGNMENT_TIMEOUT_MS         3000U
 #define FOC_ALIGNMENT_MOVEMENT_RAD       0.01f
+/*
+ * 电流反馈符号/通道映射的开环验证。台架专用，验证通过后必须置 0：它会在每次
+ * 上电时拖动转子并阻塞约 1.2 s。测试电压按 R_phase 约 1.9 Ohm 取值，电流约
+ * 0.26 A，远低于 FOC_ALIGNMENT_CURRENT_LIMIT_A。
+ */
+#ifndef FOC_SIGN_VERIFY_TEST
+#define FOC_SIGN_VERIFY_TEST             1
+#endif
+#define FOC_SIGN_VERIFY_VOLTAGE          0.50f
+#define FOC_SIGN_VERIFY_SETTLE_MS        200U
+#define FOC_SIGN_VERIFY_SAMPLES          100U
 #define MONITOR_SAMPLE_FREQ              1000U
 #define CURRENT_MONITOR_DECIMATION       (PWM_FREQ / MONITOR_SAMPLE_FREQ)
 /* USER CODE END PD */
@@ -163,8 +175,18 @@ volatile float bldc_fault_iq_ref = 0.0f;
 volatile uint32_t bldc_fault_ccr1 = 0U;
 volatile uint32_t bldc_fault_ccr2 = 0U;
 volatile uint32_t bldc_fault_ccr3 = 0U;
+/* CCR4 必须在 ISR 内取：BLDC_StopOutput() 会把它覆写成 PWM_ADC_TRIGGER_LATEST，
+   上报时再读永远是那个安全值，没有任何诊断价值。 */
+volatile uint32_t bldc_fault_ccr4 = 0U;
 volatile float bldc_fault_raw_iu = 0.0f;
 volatile float bldc_fault_raw_iv = 0.0f;
+/* 区分"电角度错"与"环路振荡"必需的三个量：跳闸拍的电角度、上一拍施加的 dq
+   电压（与快照的 CCR 一一对应）、观测速度。 */
+volatile float bldc_fault_angle_el = 0.0f;
+volatile float bldc_fault_ud = 0.0f;
+volatile float bldc_fault_uq = 0.0f;
+volatile float bldc_fault_omega = 0.0f;
+volatile uint8_t bldc_fault_saturated = 0U;
 volatile uint32_t adc_regular_callback_count = 0U;
 volatile uint32_t adc_regular_callback_max_cycles = 0U;
 volatile uint32_t adc_injected_callback_count = 0U;
@@ -529,8 +551,14 @@ static void BLDC_ReportPendingFault(void)
   uint32_t snap_ccr1;
   uint32_t snap_ccr2;
   uint32_t snap_ccr3;
+  uint32_t snap_ccr4;
   float snap_raw_iu;
   float snap_raw_iv;
+  float snap_angle_el;
+  float snap_ud;
+  float snap_uq;
+  float snap_omega;
+  uint8_t snap_saturated;
 
   if (bldc_fault_report_pending == 0U)
   {
@@ -549,8 +577,14 @@ static void BLDC_ReportPendingFault(void)
   snap_ccr1 = bldc_fault_ccr1;
   snap_ccr2 = bldc_fault_ccr2;
   snap_ccr3 = bldc_fault_ccr3;
+  snap_ccr4 = bldc_fault_ccr4;
   snap_raw_iu = bldc_fault_raw_iu;
   snap_raw_iv = bldc_fault_raw_iv;
+  snap_angle_el = bldc_fault_angle_el;
+  snap_ud = bldc_fault_ud;
+  snap_uq = bldc_fault_uq;
+  snap_omega = bldc_fault_omega;
+  snap_saturated = bldc_fault_saturated;
   bldc_fault_report_pending = 0U;
   __enable_irq();
 
@@ -566,10 +600,125 @@ static void BLDC_ReportPendingFault(void)
                   g_current_offset.offset_u, g_current_offset.offset_v,
                   (unsigned long)snap_ccr1, (unsigned long)snap_ccr2,
                   (unsigned long)snap_ccr3,
-                  (unsigned long)htim1.Instance->CCR4,
+                  (unsigned long)snap_ccr4,
                   (unsigned long)PWM_PERIOD);
+    /* ud/uq 顶到 FOC_CURRENT_VOLTAGE_LIMIT 而 iq_ref 很小 = 电流环在发散；
+       omega 接近 FOC_OBSERVER_OMEGA_LIMIT = 观测器跑飞，电角度不可信 */
+    CAW_LOG_ERROR("  th_el=%.3f ud=%.3f uq=%.3f sat=%u omega=%.2f",
+                  snap_angle_el, snap_ud, snap_uq,
+                  (unsigned int)snap_saturated, snap_omega);
   }
 }
+
+#if FOC_SIGN_VERIFY_TEST
+/*
+ * 电流反馈符号/通道映射的开环验证。必须在 BLDC_STATE_ALIGN 下运行：该状态的
+ * 注入 ISR 只做 Clarke/Park 与限流判定，不跑电流环，不会覆写这里下发的占空比。
+ *
+ * 判据一（通道与符号）：FOC_SetTorque(uq, theta) 施加的 alpha-beta 电压矢量指向
+ * theta + pi/2，转子静止、阻性主导时电流矢量必须与之同向。
+ *   d_ang ~ 0          -> 通道映射与符号都正确
+ *   d_ang ~ +-180      -> 两路符号都反了
+ *   d_ang ~ +-60/+-120 -> 通道接错，或只有一路符号反
+ * 判据二（电角度零位）：转子自由时会被拖到与电压矢量对齐，此时 id ~ |i| 且
+ * iq ~ 0 才说明 zero_electric_angle 正确；四个点上 iq 有一致的残差即为零位偏差。
+ */
+static void BLDC_RunSignVerifyTest(float test_voltage)
+{
+  static const float test_angles[4] =
+  {
+    0.0f, 1.570796327f, 3.141592654f, 4.712388980f
+  };
+  const float rad_to_deg = 57.295779513f;
+  uint32_t i;
+
+  CAW_LOG_DEBUG("Sign verify: uq=%.2fV x4 points, pass = d_ang~0 and iq~0",
+                test_voltage);
+
+  for (i = 0U; i < 4U; ++i)
+  {
+    float sum_iu = 0.0f;
+    float sum_iv = 0.0f;
+    float sum_iw = 0.0f;
+    float sum_ialpha = 0.0f;
+    float sum_ibeta = 0.0f;
+    float sum_id = 0.0f;
+    float sum_iq = 0.0f;
+    float delta_deg;
+    float expect_deg;
+    float magnitude;
+    float measure_deg;
+    float scale;
+    uint32_t n;
+    uint32_t primask;
+
+    FOC_SetTorque(&foc, test_voltage, test_angles[i]);
+    HAL_Delay(FOC_SIGN_VERIFY_SETTLE_MS);
+
+    for (n = 0U; n < FOC_SIGN_VERIFY_SAMPLES; ++n)
+    {
+      /* 与 RUN 态同节拍刷新传感器，否则 cached_angle_el 冻结、id/iq 无意义 */
+      (void)FOC_SensorUpdate(&foc);
+
+      primask = __get_PRIMASK();
+      __disable_irq();
+      sum_iu += foc.i_a;
+      sum_iv += foc.i_b;
+      sum_iw += foc.i_c;
+      sum_ialpha += foc.i_alpha;
+      sum_ibeta += foc.i_beta;
+      sum_id += foc.i_d;
+      sum_iq += foc.i_q;
+      if (primask == 0U)
+      {
+        __enable_irq();
+      }
+      HAL_Delay(1U);
+    }
+
+    if (bldc_fault_latched != 0U)
+    {
+      CAW_LOG_ERROR("Sign verify aborted at point %lu", (unsigned long)i);
+      return;
+    }
+
+    scale = 1.0f / (float)FOC_SIGN_VERIFY_SAMPLES;
+    sum_iu *= scale;
+    sum_iv *= scale;
+    sum_iw *= scale;
+    sum_ialpha *= scale;
+    sum_ibeta *= scale;
+    sum_id *= scale;
+    sum_iq *= scale;
+
+    magnitude = sqrtf(sum_ialpha * sum_ialpha + sum_ibeta * sum_ibeta);
+    measure_deg = atan2f(sum_ibeta, sum_ialpha) * rad_to_deg;
+    expect_deg = (test_angles[i] + 1.570796327f) * rad_to_deg;
+    delta_deg = measure_deg - expect_deg;
+    while (delta_deg > 180.0f)
+    {
+      delta_deg -= 360.0f;
+    }
+    while (delta_deg <= -180.0f)
+    {
+      delta_deg += 360.0f;
+    }
+
+    CAW_LOG_ERROR("[%lu] th=%.0f iuvw=[%.3f %.3f %.3f] |i|=%.3f",
+                  (unsigned long)i, test_angles[i] * rad_to_deg,
+                  sum_iu, sum_iv, sum_iw, magnitude);
+    CAW_LOG_ERROR("    ang=%.1f exp=%.1f d_ang=%+.1f id=%.3f iq=%.3f",
+                  measure_deg, expect_deg, delta_deg, sum_id, sum_iq);
+  }
+
+  FOC_SetTorque(&foc, 0.0f, test_angles[0]);
+  /* 测试全程在拖动转子，重锚定观测器，避免带着 omega_hat 残值进入 RUN */
+  if (AS5600_Update(&G_SENSOR_A) == 0)
+  {
+    FOC_ObserverReset(&foc, AS5600_GetOnceAngle(&G_SENSOR_A), HAL_GetTick());
+  }
+}
+#endif
 
 void BLDC_Stop(void)
 {
@@ -731,12 +880,12 @@ int main(void)
                      "Initial PWM current sample window invalid");
   }
 
-  if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf,
-                        ADC_CHANNEL_NUM) != HAL_OK)
-  {
-    BLDC_FailAndStop(BLDC_FAULT_ADC, (int32_t)hadc1.ErrorCode,
-                     "ADC regular DMA start failed");
-  }
+  // if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf,
+  //                       ADC_CHANNEL_NUM) != HAL_OK)
+  // {
+  //   BLDC_FailAndStop(BLDC_FAULT_ADC, (int32_t)hadc1.ErrorCode,
+  //                    "ADC regular DMA start failed");
+  // }
   if (HAL_ADCEx_InjectedStart_IT(&hadc1) != HAL_OK)
   {
     BLDC_FailAndStop(BLDC_FAULT_ADC, (int32_t)hadc1.ErrorCode,
@@ -765,6 +914,18 @@ int main(void)
     BLDC_FailAndStop(BLDC_FAULT_ALIGNMENT, (int32_t)foc_result,
                      "FOC sensor alignment failed");
   }
+
+#if FOC_SIGN_VERIFY_TEST
+  /* 仍处于 BLDC_STATE_ALIGN：电流环未接管，这里下发的开环占空比不会被覆写 */
+  BLDC_RunSignVerifyTest(FOC_SIGN_VERIFY_VOLTAGE);
+  if (bldc_fault_latched != 0U)
+  {
+    /* 此时还没进主循环，200 ms 上报任务不会执行，必须就地把现场打出来 */
+    BLDC_ReportPendingFault();
+    BLDC_FailAndStop(bldc_fault_source, bldc_fault_detail,
+                     "Sign verify tripped");
+  }
+#endif
 
 #if USE_CURRENT_LOOP
   PID_Reset(&pid_id);
@@ -869,6 +1030,10 @@ int main(void)
       g_led_status.flag = 0U;
       HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
+      CAW_LOG_INFO("adc_injected_callback_max_cycles=%lu adc_regular_callback_count=%lu",
+                   (unsigned long)adc_injected_callback_max_cycles,
+                   (unsigned long)adc_regular_callback_count);
+
       if (((bldc_state == BLDC_STATE_ALIGN) ||
            (bldc_state == BLDC_STATE_RUN)) &&
           (bldc_fault_latched == 0U))
@@ -882,8 +1047,9 @@ int main(void)
         {
           BLDC_StopOutput(BLDC_FAULT_DRV8301, (int32_t)status);
         }
-        /* AS5600_Update() 只读角度寄存器，磁体掉落必须靠复检 STATUS 发现 */
-        else if (AS5600_CheckStatus(&G_SENSOR_A) != 0)
+        /* AS5600_Update() 只读角度寄存器，磁体掉落必须靠复检 STATUS 发现。
+           只有磁体状态异常才关断；单次读失败交给 1 ms 通道的超龄判据兜底 */
+        else if (AS5600_CheckStatus(&G_SENSOR_A) == -1)
         {
           BLDC_StopOutput(BLDC_FAULT_SENSOR,
                           (int32_t)AS5600_GetErrorCount(&G_SENSOR_A));
@@ -1040,7 +1206,12 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
     current_result = FOC_ValidatePhaseCurrents(iu, iv, iw, current_limit);
     if (current_result != FOC_RESULT_OK)
     {
-      /* 保存现场：i_d 远大于 i_q 说明电角度零位偏差，反之为环路增益过激 */
+      /*
+       * 保存现场。判读依据是"电流矢量角 vs 电压矢量角"，不是 i_d/i_q 的大小：
+       * 静止转子阻性主导时电流方向恒跟随电压方向，零位偏差同时旋转测量坐标系
+       * 和输出坐标系，在 i_d 里出不来东西。两者夹角远大于一拍的角度推进量
+       * (pp*omega_limit/PWM_FREQ) 时，说明占空比在拍间大幅摆动，即环路在振荡。
+       */
       bldc_fault_iu = iu;
       bldc_fault_iv = iv;
       bldc_fault_iw = iw;
@@ -1050,8 +1221,14 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
       bldc_fault_ccr1 = htim1.Instance->CCR1;   /* 采样时刻的三相占空比 */
       bldc_fault_ccr2 = htim1.Instance->CCR2;
       bldc_fault_ccr3 = htim1.Instance->CCR3;
+      bldc_fault_ccr4 = htim1.Instance->CCR4;   /* 本拍真实的 ADC 触发点 */
       bldc_fault_raw_iu = raw_iu;   /* 原始码值：区分真实电流与开关噪声 */
       bldc_fault_raw_iv = raw_iv;
+      bldc_fault_angle_el = foc.cached_angle_el;
+      bldc_fault_ud = foc.u_d;      /* 上一拍施加的 dq 电压，与上面的 CCR 同源 */
+      bldc_fault_uq = foc.u_q;
+      bldc_fault_saturated = foc.voltage_saturated;
+      bldc_fault_omega = foc.obs_omega_hat;
       BLDC_TripFromIsr(BLDC_FAULT_CURRENT_LIMIT, current_result);
       BLDC_UpdateMaxCycles(&adc_injected_callback_max_cycles, start);
       return;

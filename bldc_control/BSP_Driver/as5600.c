@@ -214,6 +214,9 @@ int AS5600_Update(AS5600_T *sensor)
 /*
  * 运行期磁体状态复检。AS5600_Update() 只读 RAW_ANGLE，磁体掉落后器件仍会返回
  * 语法合法的角度值，必须由低频任务定期查 STATUS 才能发现。
+ * 返回 0 正常，-1 磁体状态异常（须关断），-2 读失败（总线问题）。
+ * 读失败与磁体异常必须分开：单次总线抖动不该关断电机，总线真死了 1 ms 角度
+ * 通道会先失败，由 sensor_max_age_ms 兜底。
  */
 int AS5600_CheckStatus(AS5600_T *sensor)
 {
@@ -227,7 +230,7 @@ int AS5600_CheckStatus(AS5600_T *sensor)
   if (AS5600_ReadRegister(sensor, AS5600_STATUS_REGISTER, &status) != 0)
   {
     AS5600_RecordReadError(sensor);
-    return -1;
+    return -2;
   }
 
   if (AS5600_ValidateStatus(status) != 0)

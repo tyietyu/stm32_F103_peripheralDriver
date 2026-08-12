@@ -233,6 +233,8 @@ static void FOC_SetVoltageDqWithTrig(FOC_T *hfoc, float ud, float uq,
   uc = (-u_alpha - FOC_SQRT3 * u_beta) / 2.0f +
        hfoc->voltage_power_supply / 2.0f;
 
+  hfoc->u_d = ud;
+  hfoc->u_q = uq;
   hfoc->u_alpha = u_alpha;
   hfoc->u_beta = u_beta;
   FOC_SetPwm(hfoc, ua, ub, uc);

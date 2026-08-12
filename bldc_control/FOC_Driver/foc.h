@@ -49,6 +49,10 @@ typedef struct
   float zero_electric_angle;
   float u_alpha;
   float u_beta;
+  /* 圆限幅之后真正施加出去的 dq 电压。只供故障快照/台架诊断读取，控制路径
+     不依赖它——没有这两个量，过流现场就只能靠 CCR 反算 dq 电压。 */
+  float u_d;
+  float u_q;
   float u_a;
   float u_b;
   float u_c;

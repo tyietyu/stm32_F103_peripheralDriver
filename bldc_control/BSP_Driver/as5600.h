@@ -62,7 +62,7 @@ typedef struct
 
 int AS5600_Init(AS5600_T *sensor);
 int AS5600_Update(AS5600_T *sensor);
-/* 运行期磁体状态复检，供低频任务调用；磁体掉落/过弱/过强返回 -1 */
+/* 运行期磁体状态复检：0 正常，-1 磁体异常（须关断），-2 读失败（总线问题） */
 int AS5600_CheckStatus(AS5600_T *sensor);
 uint16_t AS5600_GetRawAngle(const AS5600_T *sensor);
 float AS5600_GetOnceAngle(const AS5600_T *sensor);

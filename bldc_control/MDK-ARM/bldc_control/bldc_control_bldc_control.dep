@@ -1,7 +1,7 @@
 Dependencies for Project 'bldc_control', Target 'bldc_control': (DO NOT MODIFY !)
 CompilerVersion: 5060960::V5.06 update 7 (build 960)::.\ARMCC
-F (startup_stm32f407xx.s)(0x6A7ABB7B)(--cpu Cortex-M4.fp.sp -g --apcs=interwork --pd "__MICROLIB SETA 1"-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"--pd "__UVISION_VERSION SETA 534" --pd "_RTE_ SETA 1" --pd "STM32F407xx SETA 1" --pd "_RTE_ SETA 1"--list startup_stm32f407xx.lst --xref -o bldc_control\startup_stm32f407xx.o --depend bldc_control\startup_stm32f407xx.d)
-F (../Core/Src/main.c)(0x6A7AD061)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\main.o --depend bldc_control\main.d)
+F (startup_stm32f407xx.s)(0x6A7BEBF8)(--cpu Cortex-M4.fp.sp -g --apcs=interwork --pd "__MICROLIB SETA 1"-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"--pd "__UVISION_VERSION SETA 534" --pd "_RTE_ SETA 1" --pd "STM32F407xx SETA 1" --pd "_RTE_ SETA 1"--list startup_stm32f407xx.lst --xref -o bldc_control\startup_stm32f407xx.o --depend bldc_control\startup_stm32f407xx.d)
+F (../Core/Src/main.c)(0x6A7C0091)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\main.o --depend bldc_control\main.d)
 I (../Core/Inc/main.h)(0x6A7ABA61)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x656ECCCC)
 I (../Core/Inc/stm32f4xx_hal_conf.h)(0x698451C4)
@@ -43,9 +43,9 @@ I (../Core/Inc/spi.h)(0x698451C3)
 I (../Core/Inc/tim.h)(0x6971B77D)
 I (../Core/Inc/usart.h)(0x6971B77D)
 I (../Core/Inc/gpio.h)(0x6971B77D)
-I (../FOC_Driver/foc.h)(0x6A7AD1BA)
-I (../FOC_Driver/foc_hal.h)(0x6A7AC0C1)
-I (../BSP_Driver/as5600.h)(0x6A7AC173)
+I (../FOC_Driver/foc.h)(0x6A7BC727)
+I (../FOC_Driver/foc_hal.h)(0x6A7AE971)
+I (../BSP_Driver/as5600.h)(0x6A7ADED2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdbool.h)(0x5E8E3CC2)
 I (../BSP_Driver/hal_iic.h)(0x6A7AC459)
 I (../BSP_Driver/log.h)(0x6954CE2D)
@@ -53,6 +53,7 @@ I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdarg.h)(0x5E8E3CC2)
 I (../FOC_Driver/lowpass_filter.h)(0x6A7AC062)
 I (../FOC_Driver/pid.h)(0x6A7ABF60)
 I (../BSP_Driver/drv8301.h)(0x6A7534DC)
+I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\math.h)(0x5E8E3CC2)
 F (../Core/Src/gpio.c)(0x6A745B6C)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\gpio.o --depend bldc_control\gpio.d)
 I (../Core/Inc/gpio.h)(0x6971B77D)
 I (../Core/Inc/main.h)(0x6A7ABA61)
@@ -90,7 +91,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
-F (../Core/Src/adc.c)(0x6A7ABA65)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\adc.o --depend bldc_control\adc.d)
+F (../Core/Src/adc.c)(0x6A7BEBF6)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\adc.o --depend bldc_control\adc.d)
 I (../Core/Inc/adc.h)(0x6971B77D)
 I (../Core/Inc/main.h)(0x6A7ABA61)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x656ECCCC)
@@ -201,7 +202,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
-F (../Core/Src/tim.c)(0x6A7ABBC0)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\tim.o --depend bldc_control\tim.d)
+F (../Core/Src/tim.c)(0x6A7BEBF7)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\tim.o --depend bldc_control\tim.d)
 I (../Core/Inc/tim.h)(0x6971B77D)
 I (../Core/Inc/main.h)(0x6A7ABA61)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x656ECCCC)
@@ -1049,8 +1050,8 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
-F (..\BSP_Driver\as5600.c)(0x6A7AC28F)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\as5600.o --depend bldc_control\as5600.d)
-I (..\BSP_Driver\as5600.h)(0x6A7AC173)
+F (..\BSP_Driver\as5600.c)(0x6A7ADED0)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\as5600.o --depend bldc_control\as5600.d)
+I (..\BSP_Driver\as5600.h)(0x6A7ADED2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdbool.h)(0x5E8E3CC2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 I (..\BSP_Driver\hal_iic.h)(0x6A7AC459)
@@ -1207,7 +1208,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5E8E3CC2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
-F (..\BSP_Driver\drv8301.c)(0x6A72FCA9)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\drv8301.o --depend bldc_control\drv8301.d)
+F (..\BSP_Driver\drv8301.c)(0x6A7BEC58)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\drv8301.o --depend bldc_control\drv8301.d)
 I (..\BSP_Driver\drv8301.h)(0x6A7534DC)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x656ECCCC)
@@ -1244,8 +1245,8 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
 I (../Core/Inc/main.h)(0x6A7ABA61)
-F (..\FOC_Driver\foc.c)(0x6A7AD1B7)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\foc.o --depend bldc_control\foc.d)
-I (..\FOC_Driver\foc.h)(0x6A7AD1BA)
+F (..\FOC_Driver\foc.c)(0x6A7BC729)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\foc.o --depend bldc_control\foc.d)
+I (..\FOC_Driver\foc.h)(0x6A7BC727)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 I (../Core/Inc/tim.h)(0x6971B77D)
 I (../Core/Inc/main.h)(0x6A7ABA61)
@@ -1286,8 +1287,8 @@ I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\math.h)(0x5E8E3CC2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
 I (..\FOC_Driver\pid.h)(0x6A7ABF60)
 F (..\FOC_Driver\foc_hal.c)(0x6A7ACCED)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\foc_hal.o --depend bldc_control\foc_hal.d)
-I (..\FOC_Driver\foc_hal.h)(0x6A7AC0C1)
-I (..\FOC_Driver\foc.h)(0x6A7AD1BA)
+I (..\FOC_Driver\foc_hal.h)(0x6A7AE971)
+I (..\FOC_Driver\foc.h)(0x6A7BC727)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 I (../Core/Inc/tim.h)(0x6971B77D)
 I (../Core/Inc/main.h)(0x6A7ABA61)
@@ -1325,14 +1326,14 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
 I (../Core/Inc/adc.h)(0x6971B77D)
-I (../BSP_Driver/as5600.h)(0x6A7AC173)
+I (../BSP_Driver/as5600.h)(0x6A7ADED2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdbool.h)(0x5E8E3CC2)
 I (../BSP_Driver/hal_iic.h)(0x6A7AC459)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\math.h)(0x5E8E3CC2)
 F (..\FOC_Driver\foc_outer_loop.c)(0x6A7AC6A5)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../FOC_Driver-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\foc_outer_loop.o --depend bldc_control\foc_outer_loop.d)
 I (..\FOC_Driver\foc_outer_loop.h)(0x6A7AC6A2)
 I (..\FOC_Driver\pid.h)(0x6A7ABF60)
-I (..\FOC_Driver\foc.h)(0x6A7AD1BA)
+I (..\FOC_Driver\foc.h)(0x6A7BC727)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 I (../Core/Inc/tim.h)(0x6971B77D)
 I (../Core/Inc/main.h)(0x6A7ABA61)
