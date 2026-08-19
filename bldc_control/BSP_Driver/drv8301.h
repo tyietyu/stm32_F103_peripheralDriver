@@ -280,6 +280,10 @@ DRV8301_Result_t DRV8301_Init(SPI_HandleTypeDef *hspi);
  * @return DRV8301 operation result.
  */
 DRV8301_Result_t DRV8301_ReadStatus1(uint16_t *status);
+/**
+ * @brief Read both status registers for low-rate diagnostics.
+ */
+DRV8301_Result_t DRV8301_ReadStatus(uint16_t *status1, uint16_t *status2);
 
 #ifdef __cplusplus
 }

@@ -18,6 +18,18 @@
 #define DRV8301_CS_DELAY_CYCLES ((SystemCoreClock / 10000000U) + 1U)
 #define DRV8301_CS_DELAY()      DRV8301_DelayCoreCycles(DRV8301_CS_DELAY_CYCLES)
 
+#if (DRV8301_SHUNT_GAIN == 10U)
+#define DRV8301_CTRL2_GAIN_CONFIG DRV8301_CR2_GAIN_10
+#elif (DRV8301_SHUNT_GAIN == 20U)
+#define DRV8301_CTRL2_GAIN_CONFIG DRV8301_CR2_GAIN_20
+#elif (DRV8301_SHUNT_GAIN == 40U)
+#define DRV8301_CTRL2_GAIN_CONFIG DRV8301_CR2_GAIN_40
+#elif (DRV8301_SHUNT_GAIN == 80U)
+#define DRV8301_CTRL2_GAIN_CONFIG DRV8301_CR2_GAIN_80
+#else
+#error "Unsupported DRV8301 shunt amplifier gain"
+#endif
+
 /* Fixed configuration for the current motor driver board. */
 #define DRV8301_CTRL1_CONFIG \
     ((uint16_t)(DRV8301_CR1_GATE_CURRENT_1_7A | \
@@ -28,7 +40,7 @@
 
 #define DRV8301_CTRL2_CONFIG \
     ((uint16_t)(DRV8301_CR2_OCTW_MODE_OT_OC | \
-                DRV8301_CR2_GAIN_10 | \
+                DRV8301_CTRL2_GAIN_CONFIG | \
                 DRV8301_CR2_DC_CAL_CH1_NORMAL | \
                 DRV8301_CR2_DC_CAL_CH2_NORMAL | \
                 DRV8301_CR2_OC_TOFF_CYCLE))
@@ -311,4 +323,28 @@ DRV8301_Result_t DRV8301_Init(SPI_HandleTypeDef *hspi)
 DRV8301_Result_t DRV8301_ReadStatus1(uint16_t *status)
 {
     return DRV8301_ReadReg(DRV8301_REG_STATUS1, status);
+}
+
+DRV8301_Result_t DRV8301_ReadStatus(uint16_t *status1, uint16_t *status2)
+{
+    DRV8301_Result_t result;
+
+    if ((status1 == NULL) || (status2 == NULL))
+    {
+        return DRV8301_ERROR_PARAM;
+    }
+
+    result = DRV8301_ReadReg(DRV8301_REG_STATUS1, status1);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    result = DRV8301_ReadReg(DRV8301_REG_STATUS2, status2);
+    if (result != DRV8301_OK)
+    {
+        return result;
+    }
+
+    return DRV8301_CheckStatus2(*status2);
 }

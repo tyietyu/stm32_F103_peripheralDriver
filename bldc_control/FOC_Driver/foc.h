@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "tim.h"
+#include "foc_config.h"
 
 typedef int (*FUNC_SENSOR_UPDATE)(void);
 typedef float (*FUNC_SENSOR_GET_ONCE_ANGLE)(void);
@@ -77,9 +78,10 @@ typedef struct
   volatile uint8_t sensor_valid;
   volatile uint8_t current_sample_valid;
   volatile uint8_t next_sample_valid;
-  /* dq 电压矢量圆限幅是否生效，以及被限幅时 uq 的符号（供速度环抗饱和） */
+  /* dq 电压矢量圆限幅信息：clip_uq 是请求值与实际 uq 的差值，供慢环抗饱和 */
   volatile uint8_t voltage_saturated;
   volatile int8_t voltage_saturation_sign;
+  volatile float voltage_clip_uq;
 
   /*
    * 角度/速度跟踪观测器（PLL 型）：15 kHz 预测、1 kHz 修正。
@@ -112,9 +114,8 @@ FOC_Result_t FOC_AlignmentSensor(FOC_T *hfoc, float alignment_voltage,
                                  uint32_t timeout_ms,
                                  float movement_threshold);
 void FOC_SetVoltageLimit(FOC_T *hfoc, float voltage);
-float FOC_CloseloopElectricalAngle(FOC_T *hfoc);
 float FOC_SensorAngleToElectricalAngle(const FOC_T *hfoc, float sensor_angle);
-void FOC_SetTorque(FOC_T *hfoc, float uq, float angle_el);
+void FOC_AlignmentSetVoltage(FOC_T *hfoc, float uq, float angle_el);
 FOC_Result_t FOC_SensorUpdate(FOC_T *hfoc);
 void FOC_UpdateCachedSensorAngle(FOC_T *hfoc, float mechanical_angle,
                                  uint32_t success_tick);
@@ -141,7 +142,6 @@ void FOC_Clarke(FOC_T *hfoc, float ia, float ib, float ic);
 void FOC_Park(FOC_T *hfoc, float angle_el);
 
 #if USE_CURRENT_LOOP
-void FOC_SetTorqueWithCurrent(FOC_T *hfoc, float ud, float uq, float angle_el);
 /* 需在同一拍先调用 FOC_Clarke() + FOC_Park()，本函数复用其 i_d/i_q 与 sin/cos */
 FOC_Result_t FOC_CurrentLoopUpdate(FOC_T *hfoc, float id_ref, float iq_ref,
                                    void *pid_id, void *pid_iq, uint32_t now);

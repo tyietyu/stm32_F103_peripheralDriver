@@ -12,25 +12,16 @@
 #include "adc.h"
 #include "as5600.h"
 
-/* 电流偏置校准 */
-#define FOC_CURRENT_CALIBRATION_VERSION       1U
-#define FOC_CURRENT_OFFSET_MAX_SPAN_COUNTS    64.0f
-#define FOC_CURRENT_OFFSET_RAIL_MARGIN_COUNTS 16.0f
 /*
  * 原始码值合理区间。放大器饱和、分流虚焊、ADC 通道错配都会把读数顶到轨上，
  * 这类失效不会触发绝对值上限判定（折算电流反而可能落在限值内），必须在换算成
  * 电流之前用原始码值直接拦下。
  */
-#define FOC_CURRENT_RAW_MIN_COUNTS             16.0f
-#define FOC_CURRENT_RAW_MAX_COUNTS             4079.0f
 /*
  * 极性已由实测反推确认为正：占空比 [U 49.7% V 56.0% W 30.6%] 对应的相电压
  * [+1.02 +2.53 -3.56]V，与 sign=+1 换算出的电流 [+0.258 +0.798 -1.056]A 三相
  * 逐个同向，等效相阻 3.2~4.0Ω 一致。即"ADC 读数高于 offset"对应相电流为正。
  */
-#define FOC_CURRENT_SIGN_U                     1.0f
-#define FOC_CURRENT_SIGN_V                     1.0f
-#define FOC_CURRENT_ABS_LIMIT_A                1.0f
 #define FOC_CURRENT_VALID        FOC_RESULT_OK
 #define FOC_CURRENT_ERROR_LIMIT   FOC_ERROR_CURRENT_LIMIT
 

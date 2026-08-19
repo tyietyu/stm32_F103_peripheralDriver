@@ -31,6 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "foc_config.h"
 
 /* USER CODE END Includes */
 
@@ -50,67 +51,13 @@ extern "C" {
  * 环路级联关系：位置环 -> 速度环 -> 电流环。
  * 默认仅启用电流环，外环需完成参数整定后显式开启。
  */
-#ifndef USE_CURRENT_LOOP
-#define USE_CURRENT_LOOP  1
-#endif
-
-#ifndef USE_SPEED_LOOP
-#define USE_SPEED_LOOP    0
-#endif
-
-#ifndef USE_POSITION_LOOP
-#define USE_POSITION_LOOP 0
-#endif
-
-#if ((USE_CURRENT_LOOP != 0) && (USE_CURRENT_LOOP != 1))
-#error "USE_CURRENT_LOOP must be 0 or 1"
-#endif
-
-#if ((USE_SPEED_LOOP != 0) && (USE_SPEED_LOOP != 1))
-#error "USE_SPEED_LOOP must be 0 or 1"
-#endif
-
-#if ((USE_POSITION_LOOP != 0) && (USE_POSITION_LOOP != 1))
-#error "USE_POSITION_LOOP must be 0 or 1"
-#endif
-
-#if (USE_SPEED_LOOP && !USE_CURRENT_LOOP)
-#error "USE_SPEED_LOOP requires USE_CURRENT_LOOP"
-#endif
-
-#if (USE_POSITION_LOOP && !USE_SPEED_LOOP)
-#error "USE_POSITION_LOOP requires USE_SPEED_LOOP"
-#endif
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-#define ADC_CHANNEL_NUM       3
-#define ADC_DATA_LEN          8
-#define ADC_REF_VOLTAGE       3.3f
-#define ADC_RESOLUTION        4096.0f
-
-#define CURRENT_GAIN            10.0f
-#define SHUNT_RESISTOR          0.01f
-#define VOLTAGE_TO_CURRENT      (1.0f / (CURRENT_GAIN * SHUNT_RESISTOR))
-#define ADC_BIAS_VOLTAGE        1.65f
-
-#define VOLTAGE_DIVIDER_RATIO   8.0f 
-#define ADC_VOLTAGE_FACTOR      (ADC_REF_VOLTAGE / ADC_RESOLUTION * VOLTAGE_DIVIDER_RATIO)
-
-/* 21 MHz ADC: 2 channels x (15 sample + 12 conversion) cycles x 8 TIM clocks
-   = 432 tick = 2.571 us。必须与 adc.c 的 InjectedSamplingTime 保持一致。 */
-#define PWM_ADC_SEQUENCE_TICKS       432U
-#define PWM_ADC_END_MARGIN_TICKS     100U
-#define PWM_ADC_PEAK_BLANKING_TICKS  200U
-#define PWM_MIN_COMPARE              PWM_ADC_PEAK_BLANKING_TICKS
-#define PWM_MAX_COMPARE              (PWM_PERIOD - PWM_ADC_SEQUENCE_TICKS - \
-                                      PWM_ADC_END_MARGIN_TICKS - \
-                                      PWM_ADC_PEAK_BLANKING_TICKS)
-#define PWM_ADC_TRIGGER_LATEST       (PWM_PERIOD - PWM_ADC_PEAK_BLANKING_TICKS)
-
+/* ADC/PWM sampling timing is defined by FOC_Driver/foc_config.h. */
 /*
  * 采样窗口的真正约束是"转换结束点仍在低侧共同导通窗口内"：
  *   trigger + SEQUENCE <= 2*ARR - max_compare - END_MARGIN
@@ -118,11 +65,6 @@ void Error_Handler(void);
  * PWM_ADC_TRIGGER_LATEST 取值保守才兜住。此处按最坏情况(trigger 取最晚、
  * max_compare 取最大)做编译期校验，避免下次改 ADC 配置再次静默失效。
  */
-#if ((PWM_ADC_TRIGGER_LATEST + PWM_ADC_SEQUENCE_TICKS) > \
-     (2 * PWM_PERIOD - PWM_MAX_COMPARE - PWM_ADC_END_MARGIN_TICKS))
-#error "ADC injected sequence overruns the low-side conduction window"
-#endif
-
 /* 参考值单位：iq 为 A，速度为 rad/s，位置为累计机械角 rad。 */
 int BLDC_SetIqReference(float reference);
 #if (USE_SPEED_LOOP && !USE_POSITION_LOOP)
@@ -136,10 +78,6 @@ void BLDC_Stop(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define CKTIM 168000000
-#define PWM_PRSC 0
-#define PWM_FREQ 15000
-#define PWM_PERIOD CKTIM/(2*PWM_FREQ*(PWM_PRSC+1))
 #define EN_GATE_Pin GPIO_PIN_0
 #define EN_GATE_GPIO_Port GPIOC
 #define DC_CAL_Pin GPIO_PIN_1

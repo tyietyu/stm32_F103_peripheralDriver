@@ -92,7 +92,8 @@ void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
+  /* USER CODE: CH4 PWM2 is the deterministic ADC trigger waveform. */
+  sConfigOC.OCMode = TIM_OCMODE_PWM2;
   if (HAL_TIM_OC_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
   {
     Error_Handler();

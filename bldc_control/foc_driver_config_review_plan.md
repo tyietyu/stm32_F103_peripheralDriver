@@ -1,6 +1,6 @@
 # 基于 SimpleFOC 思路的裁剪版 BLDC 驱动实施文档
 
-> 文档状态：实施方案，仅落实文档，不直接修改源码。
+> 文档状态：历史审查记录 + 当前重构基线。第 24～28 节是 2026-08-17 起的规范性方案；第 1～23 节保留为历史依据，不得把其中的“✅/已完成/当前值”当作 HEAD 或台架证据。
 >
 > 复查日期：2026-08-11（第三次复查，对照 `SCH_Motor.pdf`、`bldc_control.ioc` 与工作区代码逐项核对）。
 >
@@ -16,6 +16,8 @@
 > - 第 18 节验收清单中与代码事实不符的勾选项已订正。
 >
 > **文档与代码的关系约定**：本文档描述**设计意图**。凡文档设计值与当前代码取值不一致处，一律在第 22.1 节列为整改项并注明两侧数值，不在正文中悄悄改成代码现值——否则文档就退化成代码的低保真副本，失去评审价值。
+
+> **重构基线补充**：本轮以提交 `3d62655` 及工作树中的实际源码为准；源码、`.ioc`、配置头和实测记录四者不一致时，以“禁止放行”为默认结论，直到重新验证。
 
 ## 1. 目标
 
@@ -72,10 +74,10 @@ AS5600 获取转子机械角度
 - 速度前馈、加速度前馈、S 曲线或梯形规划等轨迹生成；
 - 外环参数自动整定。
 
-`FOC_Driver/foc_test.c` 当前同时承载两类性质完全不同的代码，必须分开处理：
+历史文件 `FOC_Driver/foc_test.c` 曾同时承载两类性质完全不同的代码；当前源码已拆为 `foc_outer_loop.c/.h`，以下仅保留审查依据：
 
-- **运行路径**：`Foc_VelocityLoop()`、`Foc_PositionLoop()`，由 `USE_SPEED_LOOP` / `USE_POSITION_LOOP` 裁剪，是第 20.2 节串级链路的实现体。文件名 `foc_test` 已名不副实，重命名为 `foc_outer_loop.c/.h` 列入第 22.1 节整改项。
-- **必须删除的历史调试代码**：`Foc_TestOpenloopVelocity()`（Uq 直接取 `voltage_limit` 满幅输出，无任何电流保护）、`Foc_TestCloseloopVelocity()` 与 `Foc_TestCloseloopAngle()`（PID 输出直接灌给 `FOC_SetTorque()`，绕过电流环和过流校验）。三者当前无任何调用点，但仍参与编译。在一个要带功率级上电的工程里保留绕过保护的入口没有任何收益，第 22.1 节列为必删项。
+- **运行路径**：`Foc_VelocityLoop()`、`Foc_PositionLoop()`，由 `USE_SPEED_LOOP` / `USE_POSITION_LOOP` 裁剪，是第 20.2 节串级链路的实现体。历史文件名 `foc_test` 已重命名为 `foc_outer_loop.c/.h`；旧生成物不得继续参与构建。
+- **必须删除的历史调试代码**：`Foc_TestOpenloopVelocity()`（Uq 直接取 `voltage_limit` 满幅输出，无任何电流保护）、`Foc_TestCloseloopVelocity()` 与 `Foc_TestCloseloopAngle()`（PID 输出曾直接灌给旧的 `FOC_SetTorque()`，绕过电流环和过流校验）。这些入口已不属于当前 API；正常 RUN 只能通过电流环，ALIGN 维护接口为 `FOC_AlignmentSetVoltage()`。
 
 ## 3. 当前外设与职责
 
@@ -160,7 +162,7 @@ SimpleFOC 将电机控制分为 Driver、Sensor、CurrentSense 和 Motor。项�
 
 - `FOC_Driver/foc.c/.h`
 - `FOC_Driver/pid.c/.h`
-- `FOC_Driver/foc_test.c/.h`（外环）
+- `FOC_Driver/foc_outer_loop.c/.h`（外环；历史文件名为 `foc_test`）
 - `Core/Src/main.c`
 
 电流环运行步骤：
@@ -201,7 +203,7 @@ BSP_Driver/
 FOC_Driver/
   foc.c/.h           对齐、电角度、坐标变换、调制、电流环
   foc_hal.c/.h       AS5600 绑定、电流采样转换和校准
-  foc_test.c/.h      速度环、位置环（宏裁剪）
+  foc_outer_loop.c/.h  速度环、位置环（宏裁剪）
   pid.c/.h           id/iq PI、速度 PID、位置 PID
   lowpass_filter.c   监控数据滤波 + 速度反馈滤波，不进入电流反馈
 
@@ -1089,7 +1091,7 @@ int BLDC_SetPositionReference(float reference);
 | `Core/Inc/main.h`                | 环路宏、依赖校验和参考值接口声明                           |
 | `Core/Src/main.c`                | PID 初始化、参考值管理、1 kHz 外环调度和 15 kHz 电流环调用 |
 | `FOC_Driver/foc.c/.h`            | 电流环 Clarke/Park、DQ 电流 PI 及宏裁剪                    |
-| `FOC_Driver/foc_test.c/.h`       | `Foc_VelocityLoop()`、`Foc_PositionLoop()` 及宏裁剪    |
+| `FOC_Driver/foc_outer_loop.c/.h` | `Foc_VelocityLoop()`、`Foc_PositionLoop()` 及宏裁剪    |
 | `FOC_Driver/pid.c/.h`            | 固定周期 PID、输出限幅、积分抗饱和和输出斜率限制           |
 | `FOC_Driver/lowpass_filter.c/.h` | AS5600 速度反馈低通滤波                                    |
 
@@ -1268,7 +1270,7 @@ CCR4 由 `FOC_SetPwm()` 每周期动态计算，取 `[trigger_earliest, PWM_ADC_
 
 本节此前被第 1.1、4.2、7.1、9.5 节引用共四处但从未写出。它定义**速度环允许开启之前必须完成的事**，以及测速链路的量化约束。
 
-> **整改状态（2026-08-11）**：P0 / P1 / P2 全部完成。
+> **历史整改状态（2026-08-11）**：原文曾标记 P0/P1/P2 完成；该结论已被第 25～28 节的当前工作树审计和分阶段验收覆盖，不得作为放行证据。
 >
 > 代码改动已用 `arm-none-eabi-gcc -Wall -Wextra` 在四种宏组合（默认 / 速度环 / 位置环 / 无电流环）下通过编译与告警检查，**尚未上台架验证**，第 23.7 节验收清单仍全部未勾选。实施过程中相对本节原文的偏差记录在第 22.8 节。
 
@@ -1685,3 +1687,149 @@ theta_el      = normalize(dir * pp * theta_mech - zero_electric_angle)
 - [ ] 1 ms tick 丢拍计数在长时间运行后为 0。
 - [ ] 1 ms 任务内无日志输出（grep 确认）。
 - [ ] 外环执行点在 `AS5600_Update()` 之前（代码走查 + 调试 GPIO 实测）。
+
+## 24. GitHub 方案对比（2026-08-17）
+
+本节只记录可追溯的公开仓库事实；“采用”指采用职责和验证方法，不表示复制代码。没有明确许可证的仓库只作架构参考，不直接移植实现。
+
+| 参考仓库 | 已核实的做法 | 对本项目的取舍 |
+| --- | --- | --- |
+| [ODrive](https://github.com/odriverobotics/ODrive)（MIT）[DRV8301](https://github.com/odriverobotics/ODrive/blob/master/Firmware/Drivers/DRV8301/drv8301.cpp) | Gate driver 有 `UNINIT/READY/FAULT` 语义；EN_GATE、SPI 16-bit 两帧读、写后回读、状态合并检查和 nFAULT 快速失能；ADC/PWM 使用同一计时基准。 | 采用状态机、回读、故障锁存和“只有 READY 才放行 MOE”的原则。ODrive 的 F405 专用定时器/ADC 代码不直接移植。 |
+| [VESC bldc](https://github.com/vedderb/bldc)（GPLv3）[drv8301.c](https://github.com/vedderb/bldc/blob/master/hwconf/drv8301.c) | 统一读取 Status1/Status2，覆盖 FET OC、温度、PVDD/GVDD 欠压/过压；SPI 事务有互斥和错误返回；FOC 快环与板级采样宏分离。 | 借鉴故障位图、诊断接口和参数化时基；不复制 GPL 代码，且不照搬其初始化阶段禁用 OC 的默认策略。 |
+| [aci_vector_control_F28035_DRV8301](https://github.com/asm-jaime/aci_vector_control_F28035_DRV8301) | F28035 + DRV8301；EPWM 事件触发 ADC SOC；MainISR 依次执行 Clarke/Park/PID/SVPWM；nFAULT 配合硬件 Trip Zone；DRV CTRL1/2 写入后回读。 | 采用“PWM 事件→ADC→高优先级电流 ISR→CCR”的时序和硬件关断优先级。该仓库无明确许可证，不能复制代码。 |
+| [YFOC](https://github.com/Huailei-Wang/YFOC) | STM32G431 + DRV8301 + INA240 双分流；ADC 注入组采 U/W，KCL 重构 V；注入回调完成电流处理，慢环在主循环。 | 采用双分流/KCL 快照和注入回调边界；其触发点、故障链和许可证不满足本板生产要求，必须重新示波器验收。 |
+| [STM32G4-DRV8301-FOC](https://github.com/michaelchemic/STM32G4-DRV8301-FOC)（MIT） | 公开代码使用软件启动 ADC/DMA、主循环执行部分 FOC，未形成完整 DRV8301 故障链。 | 作为反例：本项目禁止把电流环放在不受 PWM 约束的主循环，也不把软件 ADC 触发当作同步采样证据。 |
+| [Arduino_SimpleFOC_DRV8301_Support_Library](https://github.com/mjy2002/Arduino_SimpleFOC_DRV8301_Support_Library) | 提供高层 3/6-PWM、EN_GATE、nFAULT 和 SPI 封装，但偏向开环/电压模式，部分实现使用阻塞延时或禁用 OC。 | 只借鉴职责命名；`FOC_AlignmentSetVoltage()` 仅限 ALIGN/维护路径，不能作为正常 RUN 的转矩入口。 |
+
+### 24.1 对比结论
+
+上述方案的共同可靠模式是：
+
+```text
+中心对齐 PWM 事件
+  -> 硬件触发 ADC 注入组
+  -> 高优先级 ISR 读取双分流快照
+  -> Clarke/Park + 电流 PI + 矢量限幅
+  -> 写入 CCR 预装载寄存器
+  -> 下一个更新事件生效
+```
+
+DRV8301 SPI 初始化、状态读取和诊断属于慢路径；nFAULT/Break（若硬件连出）属于快关断路径。当前板卡没有接出 DRV8301 nFAULT/BKIN，因此 SPI 轮询和软件过流不能宣称等价于硬件快速保护，必须在风险清单中单独标注。
+
+## 25. 当前工作树审计（源码事实优先）
+
+状态标签定义：`源码已实现` 只说明代码存在；`静态可验证` 只说明编译/检查通过；`台架待验证` 需要示波器、限流电源或电机实测；三者不能互换。
+
+| 项目 | 当前工作树事实 | 状态与放行条件 |
+| --- | --- | --- |
+| TIM1 CH4 触发 | `Core/Src/tim.c` 与 `bldc_control.ioc` 使用 `TIM_OCMODE_PWM2`，TIM1 中心对齐、RCR=1、TRGO=OC4REF。 | 源码已实现/静态可验证；必须示波器确认 CH4→ADC 注入 EOC 位于低侧共同导通窗。 |
+| 电流采样 | ADC1 注入组固定 2 通道（PA3/PA4），采样时间由 `FOC_ADC_SAMPLE_CYCLES` 映射，当前 15 cycles；W 相为 `-(U+V)`。 | 源码已实现；RC、放大器建立时间、ADC OVR、注入 EOC 计数和采样窗台架待验证。 |
+| 电压监控 | 普通 ADC 由 TIM2 TRGO + DMA 启动，回调只更新慢速监控数据，不进入电流环。 | 源码已实现；需验证普通组与注入组在同一 ADC 上的仲裁、DMA 和 overrun。 |
+| 配置来源 | `FOC_Driver/foc_config.h` 收拢 PWM/ADC 时序、分流/增益、电机参数、环路开关和启动安全默认值；DRV8301 CTRL2 增益由同一增益宏映射。 | 静态可验证；修改 `.ioc` 后必须重新做一致性检查。 |
+| 启动安全 | `FOC_SIGN_VERIFY_TEST` 默认关闭；启动不再自动拖转。ALIGN 的电压注入接口已改名为 `FOC_AlignmentSetVoltage`，正常电流环入口保留采样/PID检查。 | 源码已实现；符号验证只能作为维护命令，不能成为 RUN 放行的隐含条件。 |
+| 电流 PI | 当前 `P=0.30、I=0`，仅可视为限流台架/未整定配置，不能宣称闭环验收。 | 台架待验证；须测量相电阻/电感后重新计算并记录 Ki。 |
+| DRV8301 状态 | 初始化包含 EN_GATE、SPI 16-bit、CTRL1/2 写后回读；运行期接口同时读取 Status1/Status2。 | 源码已实现；因无 nFAULT/BKIN，只能作为慢速诊断，不能替代硬件关断。 |
+| 传感器状态 | AS5600 状态复检的磁体异常和总线读失败均进入故障路径；外环只应消费快照/观测器。 | 源码已实现；I2C 拉伸、死值和断线注入仍需台架验证。 |
+| 性能与测试 | 没有现成 host 数学测试、CI 或新鲜 Keil 全量产物；旧 `foc_test.*`/HTML 可能残留。 | 不得把旧构建报告当证据；交付前必须 Clean/Rebuild 并记录目标文件。 |
+
+## 26. 重构后的驱动架构
+
+### 26.1 分层与所有权
+
+```text
+BSP_Driver/drv8301
+  └─ SPI 帧、CTRL1/CTRL2、Status1/2、故障锁存、EN_GATE 时序
+
+Board timing (tim.c/adc.c + foc_config.h)
+  └─ TIM1 PWM/CH4 触发、ADC 注入组/普通 DMA、MOE/死区/采样窗
+
+CurrentSense (foc_hal.c)
+  └─ DC_CAL/零点校准、原始码值检查、U/V 换算、W=−U−V、快照有效位
+
+FOC math (目标拆分自 foc.c)
+  └─ Clarke/Park、观测器预测、id/iq PI、矢量限幅、duty/trigger 计算
+
+Board actuator (tim/adc 适配)
+  └─ 采样有效性、CCR 预装载、MOE/EN_GATE 和故障关断
+
+Sensor/outer/service
+  └─ AS5600 快照、1 ms 观测器修正、速度/位置环、DRV 慢速诊断、日志
+```
+
+目标边界是：FOC core 不直接访问 SPI、I2C、GPIO 或日志；DRV 层不理解电角度和 PID；慢环不进入注入 ADC ISR。当前 `foc.h` 仍通过 `tim.h/main.h` 间接依赖 STM32 HAL，这是现状债务，P4 host 测试前必须拆出纯算法头和板级适配头。`foc_config.h` 是当前阶段的单一配置入口，后续可按“板级时序/功率级与传感器/控制整定”拆成三个专用头文件，但不能重新把数值散落回 `main.c`、`main.h` 和驱动实现。
+
+### 26.2 快路径时序契约
+
+1. TIM1 产生中心对齐 PWM；CH4 的 PWM2 波形通过 OC4REF 触发 ADC1 注入组。
+2. ADC 注入完成 ISR 只读取两路 JDR、校验原始码值和采样有效位，生成一份不可变电流快照。
+3. 同一 ISR 完成 Clarke/Park、当前电角度预测、电流 PI、矢量圆限幅，并写入 CCR1～CCR4 预装载值。
+4. 下一个更新事件提交 CCR；任何采样窗无效、ADC 错误、过流或传感器超时都调用统一故障关断，先关 MOE 再关 EN_GATE。
+5. AS5600 I2C、DRV8301 SPI、速度/位置 PI、日志和统计输出不得进入该 ISR。
+
+目标不是“静态看起来足够快”，而是示波器/DWT 实测注入 ISR 最坏执行时间不超过 PWM 周期的 30%，并满足项目暂定的 20 µs 上限；否则必须优化三角函数、降频或缩短路径。
+
+### 26.3 DRV8301 状态机
+
+```text
+UNINIT -> GATE_OFF -> SPI_READY -> CONFIG_WRITE -> CONFIG_READBACK
+       -> FAULT_CHECK -> READY -> RUN
+       -> FAULT_LATCHED（任一 SPI/状态/过流/采样错误）
+```
+
+- `READY` 之前保持 TIM1 MOE 关闭；初始化完成后才允许 ALIGN。
+- CTRL1/CTRL2 必须写后回读，Status1/Status2 必须检查；运行期轮询失败直接锁存故障。
+- 若硬件将 nFAULT 接入 Break/EXTI，硬件关断优先于 SPI 读取；当前板未接出该信号，必须在产品风险中明示。
+- 故障恢复只允许显式重新初始化或复位，不能在 RUN 中自动清故障重启功率级。
+
+### 26.4 对外 API 契约
+
+- `DRV8301_Init()`、`DRV8301_ReadStatus()`：仅由启动/慢速服务调用，返回错误码，不向 FOC 暴露寄存器细节。
+- `FOC_CurrentLoopUpdate()`：要求非空 FOC/PID、当前采样有效、传感器快照未超龄；不满足即返回错误，不伪造输出。
+- `FOC_AlignmentSetVoltage()`：仅供 ALIGN 和维护诊断；正常 RUN 只能通过 `FOC_CurrentLoopUpdate()` 施加电压。
+- `FOC_Get_Calibrated_Current()`：只消费 CurrentSense 快照，不读取 ADC 外设或 GPIO。
+- 外环只读 `FOC_ObserverSnapshot()` 和状态快照，不能直接调用 AS5600 裸读接口。
+
+## 27. 分阶段实施与验收
+
+### P0：静态一致性与安全默认值
+
+- [x] 引入 `FOC_Driver/foc_config.h`，删除 `main.c/main.h/foc_hal.h` 中的重复控制参数。
+- [x] CH4 PWM2、注入 2 通道、采样时间和 DMA 启动路径统一到配置/`.ioc`。
+- [x] 默认关闭上电符号拖转试验，关闭周期性能日志。
+- [x] 电流环、采样有效位、PID 指针、ADC 错误和 DRV Status1/2 API 增加边界检查。
+- [x] 用 `arm-none-eabi-gcc -fsyntax-only -Wall -Wextra` 对核心源文件做语法/告警检查；该结果不等价于 Keil 链接或硬件验证。
+
+### P1：无载示波器与 ADC 触发验收
+
+- [ ] 观察 TIM1 CH1～3、CH4、ADC 注入 EOC/回调 GPIO，确认 RCR=1 下频率和相位符合配置。
+- [ ] 覆盖最小/最大 CCR 和矢量限幅边界，确认每次注入转换结束仍在低侧共同导通窗口。
+- [ ] 统计注入回调计数、普通 DMA 回调计数和 ADC OVR；用固定 PWM 周期计数识别注入 EOC 丢拍（STM32F4 HAL 不提供独立 JOVR 标志）。任意丢样必须进入故障或停止普通监控 DMA。
+- [ ] 测量 ISR 最坏周期、栈使用和中断嵌套；禁止以平均值替代最坏值。
+
+### P2：限流台架与电流环整定
+
+- [ ] 先完成 U/V 零点和增益校准，再验证 KCL 残差、原始码值轨到轨、正负电流符号。
+- [ ] 以限流电源和机械锁止方式完成 ALIGN；维护符号测试不自动放行 RUN。
+- [ ] 实测相电阻、相电感、母线电压和采样延迟，计算 PI 参数；在 I 项为 0 的配置下不得宣称“闭环已验收”。
+- [ ] 验证电流阶跃、过流、采样窗失效、ADC 错误和 DRV SPI 错误均能关断 MOE/EN_GATE 并锁存原因。
+
+### P3：传感器、慢环与故障服务
+
+- [ ] AS5600 断线、磁体异常、死值、跨零和 I2C 时钟拉伸注入；外环只使用带时间戳的快照。
+- [ ] 速度/位置环在电流环验收后才打开；验证 iq 限幅及电压限幅的抗饱和方向和实际输出。
+- [ ] 慢速 DRV 服务读取 Status1/2，验证 SPI 超时、设备 ID、过温/欠压/过流位图和故障日志不破坏 1 ms 任务预算。
+
+### P4：可复现构建与交付
+
+- [ ] Clean/Rebuild Keil 工程，确认源文件列表没有 `foc_test.*`，生成物与源码提交分离。
+- [ ] 增加 host 数学测试：Clarke/Park/逆变换、KCL、PWM 采样窗口、PID 外部削幅、AS5600 跨零和状态机故障锁存。
+- [ ] 将“源码已实现/静态可验证/台架待验证”记录到版本化验收表，未有示波器或台架证据的项目不得打勾为完成。
+
+## 28. 尚未消除的风险
+
+1. 当前硬件没有把 DRV8301 nFAULT/BKIN 接入 MCU，软件过流存在采样和 ISR 延迟盲区；量产安全要求应补硬件关断链路。
+2. 普通电压 DMA 与注入组共享 ADC1，必须实测仲裁、ADC regular OVR 和注入 EOC/回调丢拍；如果监控不必要，应在产品配置中关闭整条普通组链路。
+3. ADC 采样时间、运放建立时间、PWM 死区和低侧导通窗仍不是静态代码可以证明的量。
+4. `FOC_CURRENT_P=0.30、FOC_CURRENT_I=0` 只是当前保守基线，不是已整定的生产参数；必须由 R/L 和采样延迟重新生成。
+5. `sinf/cosf/sqrtf` 位于 15 kHz 快路径，需用 DWT/示波器测最坏执行时间；必要时采用 CMSIS-DSP 或查表，但不能仅凭 GitHub 示例宣称满足实时性。
+6. 旧 MDK HTML/CRF/build log 可能包含已删除的 `foc_test` 目标，不得作为当前源码状态或代码体积证据。

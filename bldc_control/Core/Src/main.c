@@ -90,50 +90,12 @@ float phase_voltage_calibration_gain[ADC_CHANNEL_NUM] = {1.0f, 1.0f, 1.0f};
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-/* 与文档设计值一致；提高前必须先在台架上确认电机允许的连续电流 */
-#define FOC_INITIAL_IQ_REF               0.02f
-#define FOC_IQ_REF_LIMIT                 0.30f
-#define FOC_CURRENT_P                    0.30f
-#define FOC_CURRENT_I                    0.00f
-#define FOC_CURRENT_D                    0.00f
-/* 电流环带宽由电压限幅约束即可，无需速率限幅：15kHz 下 200V/s 每拍仅允许输出
-   变化 0.013V，远慢于 I=2000 的积分累积速度，会导致积分饱和后持续超调过流。 */
-#define FOC_CURRENT_OUTPUT_RAMP          0.0f
-#define FOC_CURRENT_VOLTAGE_LIMIT        4.0f
-#define FOC_OUTER_LOOP_PERIOD_S          0.001f
-#if USE_SPEED_LOOP
-#define FOC_SPEED_P                      0.10f
-#define FOC_SPEED_I                      0.00f
-#define FOC_SPEED_D                      0.00f
-#define FOC_SPEED_OUTPUT_RAMP            2.00f
-#define FOC_SPEED_REFERENCE_LIMIT_RAD_S  10.0f
-#endif
-#if USE_POSITION_LOOP
-#define FOC_POSITION_P                   2.00f
-#define FOC_POSITION_I                   0.00f
-#define FOC_POSITION_D                   0.00f
-#define FOC_POSITION_OUTPUT_RAMP         20.0f
-#define FOC_POSITION_SPEED_LIMIT_RAD_S   10.0f
-/* 位置参考对称限幅：+-10 转，防止误设的大数值让位置环一次性输出满速指令 */
-#define FOC_POSITION_REFERENCE_LIMIT_RAD 62.83f
-#endif
-#define FOC_ALIGNMENT_VOLTAGE            1.50f
-#define FOC_ALIGNMENT_CURRENT_LIMIT_A    1.00f
-#define FOC_ALIGNMENT_TIMEOUT_MS         3000U
-#define FOC_ALIGNMENT_MOVEMENT_RAD       0.01f
+/* 控制参数集中在 FOC_Driver/foc_config.h；修改前必须先在限流台架确认。 */
 /*
  * 电流反馈符号/通道映射的开环验证。台架专用，验证通过后必须置 0：它会在每次
  * 上电时拖动转子并阻塞约 1.2 s。测试电压按 R_phase 约 1.9 Ohm 取值，电流约
  * 0.26 A，远低于 FOC_ALIGNMENT_CURRENT_LIMIT_A。
  */
-#ifndef FOC_SIGN_VERIFY_TEST
-#define FOC_SIGN_VERIFY_TEST             1
-#endif
-#define FOC_SIGN_VERIFY_VOLTAGE          0.50f
-#define FOC_SIGN_VERIFY_SETTLE_MS        200U
-#define FOC_SIGN_VERIFY_SAMPLES          100U
-#define MONITOR_SAMPLE_FREQ              1000U
-#define CURRENT_MONITOR_DECIMATION       (PWM_FREQ / MONITOR_SAMPLE_FREQ)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -206,7 +168,7 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN 0 */
 static void ADC_Filter_Init(float voltage_tf, float current_tf)
 {
-  int i;
+  uint32_t i;
 
   for (i = 0; i < ADC_CHANNEL_NUM; ++i)
   {
@@ -528,8 +490,7 @@ static void BLDC_UpdateOuterLoop(void)
    */
   if (foc.voltage_saturated != 0U)
   {
-    PID_ApplyExternalClip(&pid_speed, (float)foc.voltage_saturation_sign,
-                          next_iq_ref);
+    PID_ApplyExternalClip(&pid_speed, foc.voltage_clip_uq, iq_ref);
   }
 }
 #endif
@@ -615,7 +576,7 @@ static void BLDC_ReportPendingFault(void)
  * 电流反馈符号/通道映射的开环验证。必须在 BLDC_STATE_ALIGN 下运行：该状态的
  * 注入 ISR 只做 Clarke/Park 与限流判定，不跑电流环，不会覆写这里下发的占空比。
  *
- * 判据一（通道与符号）：FOC_SetTorque(uq, theta) 施加的 alpha-beta 电压矢量指向
+ * 判据一（通道与符号）：FOC_AlignmentSetVoltage(uq, theta) 施加的 alpha-beta 电压矢量指向
  * theta + pi/2，转子静止、阻性主导时电流矢量必须与之同向。
  *   d_ang ~ 0          -> 通道映射与符号都正确
  *   d_ang ~ +-180      -> 两路符号都反了
@@ -652,7 +613,7 @@ static void BLDC_RunSignVerifyTest(float test_voltage)
     uint32_t n;
     uint32_t primask;
 
-    FOC_SetTorque(&foc, test_voltage, test_angles[i]);
+    FOC_AlignmentSetVoltage(&foc, test_voltage, test_angles[i]);
     HAL_Delay(FOC_SIGN_VERIFY_SETTLE_MS);
 
     for (n = 0U; n < FOC_SIGN_VERIFY_SAMPLES; ++n)
@@ -711,7 +672,7 @@ static void BLDC_RunSignVerifyTest(float test_voltage)
                   measure_deg, expect_deg, delta_deg, sum_id, sum_iq);
   }
 
-  FOC_SetTorque(&foc, 0.0f, test_angles[0]);
+  FOC_AlignmentSetVoltage(&foc, 0.0f, test_angles[0]);
   /* 测试全程在拖动转子，重锚定观测器，避免带着 omega_hat 残值进入 RUN */
   if (AS5600_Update(&G_SENSOR_A) == 0)
   {
@@ -804,7 +765,10 @@ int main(void)
   ADC_Filter_Init(0.01f, 0.005f);
   bldc_state = BLDC_STATE_INIT;
 
-  foc_result = FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD, 24.0f, 1, 11);
+  foc_result = FOC_Closeloop_Init(&foc, &htim1, PWM_PERIOD,
+                                  FOC_MOTOR_SUPPLY_VOLTAGE,
+                                  FOC_SENSOR_DIRECTION_DEFAULT,
+                                  FOC_MOTOR_POLE_PAIRS);
   if (foc_result != FOC_RESULT_OK)
   {
     BLDC_FailAndStop(BLDC_FAULT_STARTUP, (int32_t)foc_result,
@@ -873,19 +837,19 @@ int main(void)
                      "Current offset calibration failed");
   }
 
-  FOC_SetTorque(&foc, 0.0f, 0.0f);
+  FOC_AlignmentSetVoltage(&foc, 0.0f, 0.0f);
   if (FOC_IsNextCurrentSampleValid(&foc) == 0U)
   {
     BLDC_FailAndStop(BLDC_FAULT_PWM_SAMPLE, 0,
                      "Initial PWM current sample window invalid");
   }
 
-  // if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf,
-  //                       ADC_CHANNEL_NUM) != HAL_OK)
-  // {
-  //   BLDC_FailAndStop(BLDC_FAULT_ADC, (int32_t)hadc1.ErrorCode,
-  //                    "ADC regular DMA start failed");
-  // }
+  if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_Voltage_buf,
+                        ADC_CHANNEL_NUM) != HAL_OK)
+  {
+    BLDC_FailAndStop(BLDC_FAULT_ADC, (int32_t)hadc1.ErrorCode,
+                     "ADC regular DMA start failed");
+  }
   if (HAL_ADCEx_InjectedStart_IT(&hadc1) != HAL_OK)
   {
     BLDC_FailAndStop(BLDC_FAULT_ADC, (int32_t)hadc1.ErrorCode,
@@ -1024,32 +988,41 @@ int main(void)
 
     if (g_led_status.flag != 0U)
     {
-      uint16_t status;
+      uint16_t status1;
+      uint16_t status2;
       DRV8301_Result_t result;
 
       g_led_status.flag = 0U;
       HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
+#if FOC_RUNTIME_PERF_LOG
       CAW_LOG_INFO("adc_injected_callback_max_cycles=%lu adc_regular_callback_count=%lu",
                    (unsigned long)adc_injected_callback_max_cycles,
                    (unsigned long)adc_regular_callback_count);
+#endif
 
       if (((bldc_state == BLDC_STATE_ALIGN) ||
            (bldc_state == BLDC_STATE_RUN)) &&
           (bldc_fault_latched == 0U))
       {
-        result = DRV8301_ReadStatus1(&status);
+        result = DRV8301_ReadStatus(&status1, &status2);
         if (result != DRV8301_OK)
         {
-          BLDC_StopOutput(BLDC_FAULT_SPI, (int32_t)result);
+          BLDC_StopOutput((result == DRV8301_ERROR_FAULT ||
+                           result == DRV8301_ERROR_DEVICE_ID)
+                              ? BLDC_FAULT_DRV8301
+                              : BLDC_FAULT_SPI,
+                          (int32_t)result);
         }
-        else if ((status & DRV8301_SR1_FAULT) != 0U)
+        else if (((status1 & DRV8301_SR1_FAULT) != 0U) ||
+                 ((status2 & DRV8301_SR2_GVDD_OV) != 0U))
         {
-          BLDC_StopOutput(BLDC_FAULT_DRV8301, (int32_t)status);
+          BLDC_StopOutput(BLDC_FAULT_DRV8301,
+                          (int32_t)(((uint32_t)status2 << 16) | status1));
         }
         /* AS5600_Update() 只读角度寄存器，磁体掉落必须靠复检 STATUS 发现。
            只有磁体状态异常才关断；单次读失败交给 1 ms 通道的超龄判据兜底 */
-        else if (AS5600_CheckStatus(&G_SENSOR_A) == -1)
+        else if (AS5600_CheckStatus(&G_SENSOR_A) != 0)
         {
           BLDC_StopOutput(BLDC_FAULT_SENSOR,
                           (int32_t)AS5600_GetErrorCount(&G_SENSOR_A));
@@ -1127,7 +1100,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
     float phase_voltage[ADC_CHANNEL_NUM];
     float raw_voltage;
     uint32_t start;
-    int i;
+    uint32_t i;
 
     start = DWT->CYCCNT;
     ++adc_regular_callback_count;
@@ -1143,6 +1116,14 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
     g_monitor_data.V_V = phase_voltage[1];
     g_monitor_data.V_W = phase_voltage[2];
     BLDC_UpdateMaxCycles(&adc_regular_callback_max_cycles, start);
+  }
+}
+
+void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc)
+{
+  if ((hadc != NULL) && (hadc->Instance == ADC1))
+  {
+    BLDC_TripFromIsr(BLDC_FAULT_ADC, (int32_t)hadc->ErrorCode);
   }
 }
 
@@ -1265,7 +1246,10 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
                                            &pid_iq, now);
     if (control_result != FOC_RESULT_OK)
     {
-      BLDC_TripFromIsr(BLDC_FAULT_SENSOR, (int32_t)control_result);
+      BLDC_TripFromIsr((control_result == FOC_ERROR_PWM_SAMPLE_INVALID)
+                           ? BLDC_FAULT_PWM_SAMPLE
+                           : BLDC_FAULT_SENSOR,
+                       (int32_t)control_result);
       BLDC_UpdateMaxCycles(&adc_injected_callback_max_cycles, start);
       return;
     }

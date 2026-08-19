@@ -20,6 +20,26 @@
 /* Includes ------------------------------------------------------------------*/
 #include "adc.h"
 
+#if (FOC_ADC_SAMPLE_CYCLES == 3U)
+#define FOC_ADC_SAMPLE_TIME ADC_SAMPLETIME_3CYCLES
+#elif (FOC_ADC_SAMPLE_CYCLES == 15U)
+#define FOC_ADC_SAMPLE_TIME ADC_SAMPLETIME_15CYCLES
+#elif (FOC_ADC_SAMPLE_CYCLES == 28U)
+#define FOC_ADC_SAMPLE_TIME ADC_SAMPLETIME_28CYCLES
+#elif (FOC_ADC_SAMPLE_CYCLES == 56U)
+#define FOC_ADC_SAMPLE_TIME ADC_SAMPLETIME_56CYCLES
+#elif (FOC_ADC_SAMPLE_CYCLES == 84U)
+#define FOC_ADC_SAMPLE_TIME ADC_SAMPLETIME_84CYCLES
+#elif (FOC_ADC_SAMPLE_CYCLES == 112U)
+#define FOC_ADC_SAMPLE_TIME ADC_SAMPLETIME_112CYCLES
+#elif (FOC_ADC_SAMPLE_CYCLES == 144U)
+#define FOC_ADC_SAMPLE_TIME ADC_SAMPLETIME_144CYCLES
+#elif (FOC_ADC_SAMPLE_CYCLES == 480U)
+#define FOC_ADC_SAMPLE_TIME ADC_SAMPLETIME_480CYCLES
+#else
+#error "Unsupported ADC sample time"
+#endif
+
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
@@ -52,7 +72,7 @@ void MX_ADC1_Init(void)
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
   hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIGCONV_T2_TRGO;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 3;
+  hadc1.Init.NbrOfConversion = ADC_CHANNEL_NUM;
   hadc1.Init.DMAContinuousRequests = ENABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -63,7 +83,7 @@ void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
+  sConfig.SamplingTime = FOC_ADC_SAMPLE_TIME;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -88,8 +108,8 @@ void MX_ADC1_Init(void)
   */
   sConfigInjected.InjectedChannel = ADC_CHANNEL_3;
   sConfigInjected.InjectedRank = 1;
-  sConfigInjected.InjectedNbrOfConversion = 2;
-  sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_15CYCLES;
+  sConfigInjected.InjectedNbrOfConversion = FOC_ADC_INJECTED_CHANNELS;
+  sConfigInjected.InjectedSamplingTime = FOC_ADC_SAMPLE_TIME;
   sConfigInjected.ExternalTrigInjecConvEdge = ADC_EXTERNALTRIGINJECCONVEDGE_RISING;
   sConfigInjected.ExternalTrigInjecConv = ADC_EXTERNALTRIGINJECCONV_T1_TRGO;
   sConfigInjected.AutoInjectedConv = DISABLE;
