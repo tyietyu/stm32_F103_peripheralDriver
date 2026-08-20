@@ -31,7 +31,6 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "foc_config.h"
 
 /* USER CODE END Includes */
 
@@ -57,23 +56,6 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-/* ADC/PWM sampling timing is defined by FOC_Driver/foc_config.h. */
-/*
- * 采样窗口的真正约束是"转换结束点仍在低侧共同导通窗口内"：
- *   trigger + SEQUENCE <= 2*ARR - max_compare - END_MARGIN
- * FOC_SetPwm() 的运行时判据把 SEQUENCE 加在触发下界上，方向与此相反，靠
- * PWM_ADC_TRIGGER_LATEST 取值保守才兜住。此处按最坏情况(trigger 取最晚、
- * max_compare 取最大)做编译期校验，避免下次改 ADC 配置再次静默失效。
- */
-/* 参考值单位：iq 为 A，速度为 rad/s，位置为累计机械角 rad。 */
-int BLDC_SetIqReference(float reference);
-#if (USE_SPEED_LOOP && !USE_POSITION_LOOP)
-int BLDC_SetSpeedReference(float reference);
-#endif
-#if USE_POSITION_LOOP
-int BLDC_SetPositionReference(float reference);
-#endif
-void BLDC_Stop(void);
 
 /* USER CODE END EFP */
 
@@ -102,10 +84,6 @@ void BLDC_Stop(void);
 #define LED_GPIO_Port GPIOB
 #define SPI2_CS_Pin GPIO_PIN_12
 #define SPI2_CS_GPIO_Port GPIOB
-#define AS5600_SCL_Pin GPIO_PIN_6
-#define AS5600_SCL_GPIO_Port GPIOB
-#define AS5600_SDA_Pin GPIO_PIN_7
-#define AS5600_SDA_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

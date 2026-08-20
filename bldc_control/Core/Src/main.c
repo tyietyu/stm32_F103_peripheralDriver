@@ -19,6 +19,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "dma.h"
+#include "i2c.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
@@ -26,6 +28,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "as5600.h"
 #include "delay.h"
 
 /* USER CODE END Includes */
@@ -37,12 +40,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-/* 控制参数集中在 FOC_Driver/foc_config.h；修改前必须先在限流台架确认。 */
-/*
- * 电流反馈符号/通道映射的开环验证。台架专用，验证通过后必须置 0：它会在每次
- * 上电时拖动转子并阻塞约 1.2 s。测试电压按 R_phase 约 1.9 Ohm 取值，电流约
- * 0.26 A，远低于 FOC_ALIGNMENT_CURRENT_LIMIT_A。
- */
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -53,6 +51,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+static AS5600_T g_encoder;
 
 /* USER CODE END PV */
 
@@ -95,14 +94,20 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_ADC1_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   MX_SPI2_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  /* 软件 I2C 的位延时依赖 DWT 计数器，必须早于 AS5600_Init() 完成初始化 */
+  /* AS5600 写 CONF 后的建立等待用 delay_us()，必须早于 AS5600_Init() */
   delay_init();
+  if (AS5600_Init(&g_encoder, &hi2c1) != 0)
+  {
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -112,6 +117,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    /* 移植验证用的 1 ms 节拍；正式的周期任务归属待架构方案确定后再迁移 */
+    static uint32_t encoder_tick = 0U;
+    uint32_t now = HAL_GetTick();
+
+    if (now != encoder_tick)
+    {
+      encoder_tick = now;
+      (void)AS5600_UpdateStart(&g_encoder);
+    }
   }
   
   /* USER CODE END 3 */
@@ -161,6 +175,25 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/*
+ * HAL 的 I2C 回调是全局弱符号，放在应用层转发而不是塞进 BSP 驱动，
+ * 后续接入 FOC 应用层时驱动不需要再改。本板 I2C1 上只挂了 AS5600。
+ */
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+  if (hi2c->Instance == I2C1)
+  {
+    AS5600_OnRxComplete(&g_encoder);
+  }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+  if (hi2c->Instance == I2C1)
+  {
+    AS5600_OnRxError(&g_encoder);
+  }
+}
 
 /* USER CODE END 4 */
 

@@ -1,29 +1,21 @@
 #include "as5600.h"
-
 #include <math.h>
 #include <stddef.h>
-
 #include "delay.h"
-#include "main.h"
 
 #define AS5600_TWO_PI          6.283185307179586f
 #define AS5600_MAX_ERROR_COUNT 0xFFFFU
 
-static iic_bus_t i2c_bus = {
-  .IIC_SCL_PORT = AS5600_SCL_GPIO_Port,
-  .IIC_SCL_PIN = AS5600_SCL_Pin,
-  .IIC_SDA_PORT = AS5600_SDA_GPIO_Port,
-  .IIC_SDA_PIN = AS5600_SDA_Pin,
-};
-
 static int AS5600_ReadRegister(AS5600_T *sensor, uint8_t reg, uint8_t *value)
 {
-  if ((sensor == NULL) || (sensor->i2c_ins == NULL) || (value == NULL))
+  if ((sensor == NULL) || (sensor->hi2c == NULL) || (value == NULL))
   {
     return -1;
   }
 
-  return (IIC_Read_Multi_Byte(sensor->i2c_ins, AS5600_RAW_ADDR, reg, 1U, value) == 0U) ? 0 : -1;
+  return (HAL_I2C_Mem_Read(sensor->hi2c, AS5600_I2C_ADDR, reg,
+                           I2C_MEMADD_SIZE_8BIT, value, 1U,
+                           AS5600_I2C_TIMEOUT_MS) == HAL_OK) ? 0 : -1;
 }
 
 /* CONF 为易失寄存器，每次上电写入，不使用 BURN_SETTING，不消耗 ZMCO 次数 */
@@ -32,7 +24,9 @@ static int AS5600_WriteRegisterVerified(AS5600_T *sensor, uint8_t reg,
 {
   uint8_t readback = 0U;
 
-  if (IIC_Write_One_Byte(sensor->i2c_ins, AS5600_RAW_ADDR, reg, value) != 0U)
+  if (HAL_I2C_Mem_Write(sensor->hi2c, AS5600_I2C_ADDR, reg,
+                        I2C_MEMADD_SIZE_8BIT, &value, 1U,
+                        AS5600_I2C_TIMEOUT_MS) != HAL_OK)
   {
     return -1;
   }
@@ -61,17 +55,19 @@ static int AS5600_ValidateStatus(uint8_t status)
   return 0;
 }
 
+/* 阻塞式读取，仅供 AS5600_Init() 取首个基准角度使用；运行期走 DMA 路径 */
 static int AS5600_ReadRawAngle(AS5600_T *sensor, uint16_t *raw_angle)
 {
   uint8_t buffer[2] = {0U};
 
-  if ((sensor == NULL) || (sensor->i2c_ins == NULL) || (raw_angle == NULL))
+  if ((sensor == NULL) || (sensor->hi2c == NULL) || (raw_angle == NULL))
   {
     return -1;
   }
 
-  if (IIC_Read_Multi_Byte(sensor->i2c_ins, AS5600_RAW_ADDR,
-                          AS5600_RAW_ANGLE_REGISTER, 2U, buffer) != 0U)
+  if (HAL_I2C_Mem_Read(sensor->hi2c, AS5600_I2C_ADDR, AS5600_RAW_ANGLE_REGISTER,
+                       I2C_MEMADD_SIZE_8BIT, buffer, 2U,
+                       AS5600_I2C_TIMEOUT_MS) != HAL_OK)
   {
     return -1;
   }
@@ -101,17 +97,21 @@ static void AS5600_PublishSample(AS5600_T *sensor, uint16_t raw_angle, uint32_t 
   sensor->valid = true;
 }
 
-int AS5600_Init(AS5600_T *sensor)
+int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c)
 {
   uint8_t status = 0U;
   uint16_t raw_angle = 0U;
 
-  if (sensor == NULL)
+  if ((sensor == NULL) || (hi2c == NULL))
   {
     return -1;
   }
 
-  sensor->i2c_ins = &i2c_bus;
+  sensor->hi2c = hi2c;
+  sensor->rx_buf[0] = 0U;
+  sensor->rx_buf[1] = 0U;
+  sensor->busy = 0U;
+  sensor->start_tick = 0U;
   sensor->raw_angle = 0U;
   sensor->mechanical_angle = 0.0f;
   sensor->full_angle = 0.0f;
@@ -121,11 +121,6 @@ int AS5600_Init(AS5600_T *sensor)
   sensor->step_reject_count = 0U;
   sensor->magnet_detected = false;
   sensor->valid = false;
-
-  if (IICInit(sensor->i2c_ins) != 0U)
-  {
-    return -1;
-  }
 
   if ((AS5600_ReadRegister(sensor, AS5600_STATUS_REGISTER, &status) != 0) ||
       (AS5600_ValidateStatus(status) != 0))
@@ -157,22 +152,60 @@ int AS5600_Init(AS5600_T *sensor)
   return 0;
 }
 
-int AS5600_Update(AS5600_T *sensor)
+int AS5600_UpdateStart(AS5600_T *sensor)
+{
+  if ((sensor == NULL) || (sensor->hi2c == NULL) || (!sensor->magnet_detected))
+  {
+    return -1;
+  }
+
+  if (sensor->busy)
+  {
+    /*
+     * 从机拉死 SDA 时 DMA 不会产生任何回调，busy 会一直挂着。超时后必须复位外设，
+     * 否则角度通道永久失效。
+     */
+    if ((uint32_t)(HAL_GetTick() - sensor->start_tick) > AS5600_DMA_TIMEOUT_MS)
+    {
+      (void)HAL_I2C_DeInit(sensor->hi2c);
+      (void)HAL_I2C_Init(sensor->hi2c);
+      sensor->busy = 0U;
+      AS5600_RecordReadError(sensor);
+    }
+    return -2;
+  }
+
+  /* busy 必须在发起前置位：完成回调在中断上下文，可能先于本函数返回 */
+  sensor->start_tick = HAL_GetTick();
+  sensor->busy = 1U;
+
+  if (HAL_I2C_Mem_Read_DMA(sensor->hi2c, AS5600_I2C_ADDR,
+                           AS5600_RAW_ANGLE_REGISTER, I2C_MEMADD_SIZE_8BIT,
+                           sensor->rx_buf, 2U) != HAL_OK)
+  {
+    sensor->busy = 0U;
+    AS5600_RecordReadError(sensor);
+    return -1;
+  }
+
+  return 0;
+}
+
+/* 在 I2C DMA 接收完成中断上下文执行：解算本次采样并发布 */
+void AS5600_OnRxComplete(AS5600_T *sensor)
 {
   int32_t delta;
   float wrap = 0.0f;
   uint16_t raw_angle;
 
-  if ((sensor == NULL) || (!sensor->magnet_detected))
+  if (sensor == NULL)
   {
-    return -1;
+    return;
   }
 
-  if (AS5600_ReadRawAngle(sensor, &raw_angle) != 0)
-  {
-    AS5600_RecordReadError(sensor);
-    return -1;
-  }
+  sensor->busy = 0U;
+  raw_angle = (((uint16_t)sensor->rx_buf[0] << 8) |
+               (uint16_t)sensor->rx_buf[1]) & AS5600_RAW_MASK;
 
   /* 折叠到 ±半圈得到真实步进，折叠方向同时给出跨圈量 */
   delta = (int32_t)raw_angle - (int32_t)sensor->raw_angle;
@@ -186,28 +219,38 @@ int AS5600_Update(AS5600_T *sensor)
     delta += (int32_t)AS5600_RESOLUTION;
     wrap = AS5600_TWO_PI;
   }
-  
+
   if ((delta > AS5600_MAX_STEP_COUNTS) || (delta < -AS5600_MAX_STEP_COUNTS))
   {
     AS5600_RecordReadError(sensor);
     if (sensor->step_reject_count < AS5600_MAX_STEP_REJECT)
     {
       ++sensor->step_reject_count;
-      return -1;
+      return;
     }
   }
 
   sensor->rotation_offset += wrap;
   AS5600_PublishSample(sensor, raw_angle, HAL_GetTick());
-  return 0;
+}
+
+void AS5600_OnRxError(AS5600_T *sensor)
+{
+  if (sensor == NULL)
+  {
+    return;
+  }
+
+  sensor->busy = 0U;
+  AS5600_RecordReadError(sensor);
 }
 
 /*
- * 运行期磁体状态复检。AS5600_Update() 只读 RAW_ANGLE，磁体掉落后器件仍会返回
+ * 运行期磁体状态复检。角度通道只读 RAW_ANGLE，磁体掉落后器件仍会返回
  * 语法合法的角度值，必须由低频任务定期查 STATUS 才能发现。
- * 返回 0 正常，-1 磁体状态异常（须关断），-2 读失败（总线问题）。
- * 读失败与磁体异常必须分开：单次总线抖动不该关断电机，总线真死了 1 ms 角度
- * 通道会先失败，由 sensor_max_age_ms 兜底。
+ * 返回 0 正常，-1 磁体状态异常（须关断），-2 读失败或总线忙。
+ * 读失败与磁体异常必须分开：单次总线抖动不该关断电机，总线真死了角度通道会先
+ * 失败，由 sensor_max_age_ms 兜底。
  */
 int AS5600_CheckStatus(AS5600_T *sensor)
 {
@@ -216,6 +259,12 @@ int AS5600_CheckStatus(AS5600_T *sensor)
   if (sensor == NULL)
   {
     return -1;
+  }
+
+  /* 阻塞读与 DMA 读不能在同一总线上重入 */
+  if (sensor->busy)
+  {
+    return -2;
   }
 
   if (AS5600_ReadRegister(sensor, AS5600_STATUS_REGISTER, &status) != 0)

@@ -3,10 +3,11 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-
-#include "hal_iic.h"
+#include "stm32f4xx_hal.h"
 
 #define AS5600_RAW_ADDR             0x36U
+/* HAL 的 I2C API 收 8 位地址（含 R/W 位），需在 7 位从机地址上左移一位 */
+#define AS5600_I2C_ADDR             (AS5600_RAW_ADDR << 1U)
 #define AS5600_RAW_ANGLE_REGISTER   0x0CU
 #define AS5600_STATUS_REGISTER      0x0BU
 #define AS5600_CONF_HIGH_REGISTER   0x07U
@@ -44,9 +45,20 @@
 #define AS5600_MAX_STEP_COUNTS      512
 #define AS5600_MAX_STEP_REJECT      3U
 
+/* 阻塞式访问（Init / CheckStatus）的总线超时 */
+#define AS5600_I2C_TIMEOUT_MS       10U
+/*
+ * DMA 读的卡死判定。从机拉死 SDA 时 DMA 传输不会产生任何回调，busy 会永远置位，
+ * 角度通道就此永久失效，因此必须有超时兜底并复位外设。
+ */
+#define AS5600_DMA_TIMEOUT_MS       5U
+
 typedef struct
 {
-  iic_bus_t *i2c_ins;
+  I2C_HandleTypeDef *hi2c;
+  uint8_t rx_buf[2];          /* DMA 目标缓冲，须常驻，不能用栈变量 */
+  volatile uint8_t busy;      /* 1 = 一次 DMA 读进行中 */
+  uint32_t start_tick;        /* 本次 DMA 读的发起时刻，供超时判定 */
   uint16_t raw_angle;
   float mechanical_angle;
   float full_angle;
@@ -58,10 +70,22 @@ typedef struct
   bool valid;
 } AS5600_T;
 
-/* 调用前必须已执行 delay_init()，软件 I2C 的位延时依赖它 */
-int AS5600_Init(AS5600_T *sensor);
-int AS5600_Update(AS5600_T *sensor);
-/* 运行期磁体状态复检：0 正常，-1 磁体异常（须关断），-2 读失败（总线问题） */
+/*
+ * 阻塞式初始化，只在上电跑一次：校验磁体、写 CONF 并回读校验、读取首个角度。
+ * 必须在 MX_I2C1_Init() 与 delay_init() 之后调用（CONF 写入后的建立等待用 delay_us）。
+ */
+int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c);
+/*
+ * 非阻塞地发起一次 RAW_ANGLE 读取，由周期任务调用。
+ * 0 已发起；-1 发起失败或参数非法；-2 上一次尚未完成（本周期跳过，不算错误）。
+ * 角度解算在 AS5600_OnRxComplete() 里完成。
+ */
+int AS5600_UpdateStart(AS5600_T *sensor);
+/* 由 HAL_I2C_MemRxCpltCallback 转发，在中断上下文完成本次采样的解算与发布 */
+void AS5600_OnRxComplete(AS5600_T *sensor);
+/* 由 HAL_I2C_ErrorCallback 转发 */
+void AS5600_OnRxError(AS5600_T *sensor);
+/* 运行期磁体状态复检：0 正常，-1 磁体异常（须关断），-2 读失败或总线忙 */
 int AS5600_CheckStatus(AS5600_T *sensor);
 /* 单圈机械角 [0, 2π)，供电角度换算 */
 float AS5600_GetOnceAngle(const AS5600_T *sensor);
