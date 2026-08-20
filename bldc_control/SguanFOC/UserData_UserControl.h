@@ -4,64 +4,39 @@
 /* 电机控制User用户设置·实时参数控制页面 */
 
 /* 用户自己的CODE BEGIN Includes */
-
+#include "foc_app.h"
 /* 用户自己的CODE END Includes */
 
 static inline void User_UserControl(void){
-    /* 仅传入需要实时控制的数据，如Target_Speed */
-    // like: Sguan.foc.Target_Speed = 0.0f;
+    /* 15 kHz 环内、控制器运算之前调用：落实挂起的模式切换，再把目标值写进库结构体。
+       目标值统一在这里落库，避免 UART 中断直接写 double 型 Target_Pos 造成撕裂 */
+    FocApp_ApplyTargets();
 }
 
 static inline void User_AO_Adjust(float AO){
-    /* Your code for Parameter set */
-    /* like: 
-    switch (Sguan.mode){
-    case 0x00:
-        Sguan.foc.Uq_in = AO;
-        break;
-    case 0x01:
-        Sguan.foc.Target_Iq = AO;
-        break;
-    case 0x02:
-        Sguan.foc.Target_Speed = AO;
-        break;
-    case 0x03:
-        Sguan.foc.Target_Pos = AO;
-        break;
-    default:
-        break;
-    }
-    */
+    /* AO=xx? 按当前 mode 分发：开环 Uq_in / Target_Iq / Target_Speed / Target_Pos */
+    FocApp_SetTarget(AO);
 }
 
 static inline void User_BO_Adjust(float BO){
-    /* Your code for Parameter set */
-    /* like: 
-    if ((0.0f < BO) && (BO < 1.0f)){
-        Sguan.mode = 0x00;
+    /* BO=xx? 切换运行模式，切换时清目标并复位各控制器历史量 */
+    if (BO < 1.0f){
+        FocApp_SetMode(Velocity_OPEN_MODE);
     }
-    else if ((1.0f <= BO) && (BO < 2.0f)){
-        Sguan.mode = 0x01;
+    else if (BO < 2.0f){
+        FocApp_SetMode(Current_SINGLE_MODE);
     }
-    else if ((2.0f <= BO) && (BO < 3.0f)){
-        Sguan.mode = 0x02;
+    else if (BO < 3.0f){
+        FocApp_SetMode(VelCur_DOUBLE_MODE);
     }
-    else if ((3.0f <= BO) && (BO < 10.0f)){
-        Sguan.mode = 0x03;
+    else{
+        FocApp_SetMode(PosVelCur_THREE_MODE);
     }
-    */
 }
 
 static inline void User_CO_Adjust(float CO){
-    /* Your code for Parameter set */
-    /* like: 
-    if (CO < 0.5f){
-        Sguan.status = 0x16;
-    }
-    else{
-        Sguan.status = 0x01;
-    }
-    */
+    /* CO=0? 急停锁定；CO=1? 解除锁定进待机（栅极仍关断）；CO=2? 重新初始化并运行 */
+    FocApp_SetControlWord(CO);
 }
 
 static inline void User_UserTX(void){

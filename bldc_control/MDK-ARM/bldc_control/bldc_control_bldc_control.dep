@@ -1,7 +1,7 @@
 Dependencies for Project 'bldc_control', Target 'bldc_control': (DO NOT MODIFY !)
 CompilerVersion: 5060960::V5.06 update 7 (build 960)::.\ARMCC
 F (startup_stm32f407xx.s)(0x6A8692AC)(--cpu Cortex-M4.fp.sp -g --apcs=interwork --pd "__MICROLIB SETA 1"-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"--pd "__UVISION_VERSION SETA 534" --pd "_RTE_ SETA 1" --pd "STM32F407xx SETA 1" --pd "_RTE_ SETA 1"--list startup_stm32f407xx.lst --xref -o bldc_control\startup_stm32f407xx.o --depend bldc_control\startup_stm32f407xx.d)
-F (../Core/Src/main.c)(0x6A8679AC)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\main.o --depend bldc_control\main.d)
+F (../Core/Src/main.c)(0x6A86C1C4)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\main.o --depend bldc_control\main.d)
 I (../Core/Inc/main.h)(0x6A868A3C)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x656ECCCC)
 I (../Core/Inc/stm32f4xx_hal_conf.h)(0x6A866FCD)
@@ -46,9 +46,79 @@ I (../Core/Inc/spi.h)(0x698451C3)
 I (../Core/Inc/tim.h)(0x6971B77D)
 I (../Core/Inc/usart.h)(0x6971B77D)
 I (../Core/Inc/gpio.h)(0x6971B77D)
+I (../BSP_Driver/delay.h)(0x69705E95)
+I (../BSP_Driver/drv8301.h)(0x6A857F60)
+I (../Core/Inc/foc_app.h)(0x6A86C955)
+I (../SguanFOC/SguanFOC.h)(0x6A82845A)
+I (../SguanFOC/Sguan_Filter.h)(0x6A82845A)
+I (../SguanFOC/Sguan_math.h)(0x6A82845A)
+I (../SguanFOC/UserData_Calculate.h)(0x6A86CECB)
+I (../SguanFOC/Sguan_FW.h)(0x6A82845A)
+I (../SguanFOC/Sguan_Ladrc.h)(0x6A82845A)
+I (../SguanFOC/Sguan_MotorStatus.h)(0x6A82845A)
+I (../SguanFOC/UserData_Status.h)(0x6A86BEFA)
+I (../SguanFOC/Sguan_PID.h)(0x6A86BF83)
+I (../SguanFOC/Sguan_PLL.h)(0x6A82845A)
+I (../SguanFOC/Sguan_printf.h)(0x6A856EAA)
+F (../Core/Src/foc_app.c)(0x6A86CF4D)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\foc_app.o --depend bldc_control\foc_app.d)
+I (../Core/Inc/foc_app.h)(0x6A86C955)
+I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
+I (../Core/Inc/main.h)(0x6A868A3C)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x656ECCCC)
+I (../Core/Inc/stm32f4xx_hal_conf.h)(0x6A866FCD)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h)(0x656ECCCC)
+I (../Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f4xx.h)(0x656ECCCC)
+I (../Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f407xx.h)(0x656ECCCC)
+I (../Drivers/CMSIS/Include/core_cm4.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Include/cmsis_version.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Include/cmsis_compiler.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Include/cmsis_armcc.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Include/mpu_armv7.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Device/ST/STM32F4xx/Include/system_stm32f4xx.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h)(0x656ECCCC)
+I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stddef.h)(0x5E8E3CC2)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_gpio.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_gpio_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_exti.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_dma.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_dma_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_cortex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_adc.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_adc.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_adc_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash_ramfunc.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_i2c.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_i2c_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
+I (../Core/Inc/adc.h)(0x6971B77D)
+I (../Core/Inc/i2c.h)(0x6A866FCC)
+I (../Core/Inc/spi.h)(0x698451C3)
+I (../Core/Inc/tim.h)(0x6971B77D)
+I (../Core/Inc/usart.h)(0x6971B77D)
 I (../BSP_Driver/as5600.h)(0x6A86797D)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdbool.h)(0x5E8E3CC2)
-I (../BSP_Driver/delay.h)(0x69705E95)
+I (../BSP_Driver/drv8301.h)(0x6A857F60)
+I (../SguanFOC/SguanFOC.h)(0x6A82845A)
+I (../SguanFOC/Sguan_Filter.h)(0x6A82845A)
+I (../SguanFOC/Sguan_math.h)(0x6A82845A)
+I (../SguanFOC/UserData_Calculate.h)(0x6A86CECB)
+I (../SguanFOC/Sguan_FW.h)(0x6A82845A)
+I (../SguanFOC/Sguan_Ladrc.h)(0x6A82845A)
+I (../SguanFOC/Sguan_MotorStatus.h)(0x6A82845A)
+I (../SguanFOC/UserData_Status.h)(0x6A86BEFA)
+I (../SguanFOC/Sguan_PID.h)(0x6A86BF83)
+I (../SguanFOC/Sguan_PLL.h)(0x6A82845A)
+I (../SguanFOC/Sguan_printf.h)(0x6A856EAA)
+I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
 F (../Core/Src/gpio.c)(0x6A8692AA)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\gpio.o --depend bldc_control\gpio.d)
 I (../Core/Inc/gpio.h)(0x6971B77D)
 I (../Core/Inc/main.h)(0x6A868A3C)
@@ -322,7 +392,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
-F (../Core/Src/stm32f4xx_it.c)(0x6A86915F)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\stm32f4xx_it.o --depend bldc_control\stm32f4xx_it.d)
+F (../Core/Src/stm32f4xx_it.c)(0x6A86C244)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\stm32f4xx_it.o --depend bldc_control\stm32f4xx_it.d)
 I (../Core/Inc/main.h)(0x6A868A3C)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x656ECCCC)
 I (../Core/Inc/stm32f4xx_hal_conf.h)(0x6A866FCD)
@@ -361,6 +431,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
 I (../Core/Inc/stm32f4xx_it.h)(0x6A86915F)
+I (../Core/Inc/foc_app.h)(0x6A86C955)
 F (../Core/Src/stm32f4xx_hal_msp.c)(0x6971B77E)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\stm32f4xx_hal_msp.o --depend bldc_control\stm32f4xx_hal_msp.d)
 I (../Core/Inc/main.h)(0x6A868A3C)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x656ECCCC)
@@ -1379,68 +1450,108 @@ I (../Core/Inc/main.h)(0x6A868A3C)
 F (..\SguanFOC\Sguan_Filter.c)(0x6A82845A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_filter.o --depend bldc_control\sguan_filter.d)
 I (..\SguanFOC\Sguan_Filter.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_math.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Calculate.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Calculate.h)(0x6A86CECB)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 F (..\SguanFOC\Sguan_FW.c)(0x6A82845A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_fw.o --depend bldc_control\sguan_fw.d)
 I (..\SguanFOC\Sguan_FW.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_math.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Calculate.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Calculate.h)(0x6A86CECB)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
-F (..\SguanFOC\Sguan_Ladrc.c)(0x6A82845A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_ladrc.o --depend bldc_control\sguan_ladrc.d)
+F (..\SguanFOC\Sguan_Ladrc.c)(0x6A86C035)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_ladrc.o --depend bldc_control\sguan_ladrc.d)
 I (..\SguanFOC\Sguan_Ladrc.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_math.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Calculate.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Calculate.h)(0x6A86CECB)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 F (..\SguanFOC\Sguan_math.c)(0x6A82845A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_math.o --depend bldc_control\sguan_math.d)
 I (..\SguanFOC\Sguan_math.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Calculate.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Calculate.h)(0x6A86CECB)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 F (..\SguanFOC\Sguan_MotorStatus.c)(0x6A82845A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_motorstatus.o --depend bldc_control\sguan_motorstatus.d)
 I (..\SguanFOC\Sguan_MotorStatus.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Status.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Status.h)(0x6A86BEFA)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
-F (..\SguanFOC\Sguan_PID.c)(0x6A82845A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_pid.o --depend bldc_control\sguan_pid.d)
-I (..\SguanFOC\Sguan_PID.h)(0x6A82845A)
+I (../Core/Inc/foc_app.h)(0x6A86C955)
+F (..\SguanFOC\Sguan_PID.c)(0x6A86BFFB)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_pid.o --depend bldc_control\sguan_pid.d)
+I (..\SguanFOC\Sguan_PID.h)(0x6A86BF83)
 I (..\SguanFOC\Sguan_math.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Calculate.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Calculate.h)(0x6A86CECB)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 F (..\SguanFOC\Sguan_PLL.c)(0x6A82845A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_pll.o --depend bldc_control\sguan_pll.d)
 I (..\SguanFOC\Sguan_PLL.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_math.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Calculate.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Calculate.h)(0x6A86CECB)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 F (..\SguanFOC\Sguan_printf.c)(0x6A856EA9)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguan_printf.o --depend bldc_control\sguan_printf.d)
 I (..\SguanFOC\Sguan_printf.h)(0x6A856EAA)
 I (..\SguanFOC\Sguan_math.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Calculate.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Calculate.h)(0x6A86CECB)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
-I (..\SguanFOC\UserData_Correspond.h)(0x6A82845A)
-I (..\SguanFOC\UserData_UserControl.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Correspond.h)(0x6A86B9BA)
+I (../Core/Inc/foc_app.h)(0x6A86C955)
+I (..\SguanFOC\UserData_UserControl.h)(0x6A86C971)
 I (..\SguanFOC\SguanFOC.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_Filter.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_FW.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_Ladrc.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_MotorStatus.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Status.h)(0x6A82845A)
-I (..\SguanFOC\Sguan_PID.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Status.h)(0x6A86BEFA)
+I (..\SguanFOC\Sguan_PID.h)(0x6A86BF83)
 I (..\SguanFOC\Sguan_PLL.h)(0x6A82845A)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5E8E3CC2)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
-F (..\SguanFOC\SguanFOC.c)(0x6A82845A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguanfoc.o --depend bldc_control\sguanfoc.d)
+F (..\SguanFOC\SguanFOC.c)(0x6A86C0B9)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\sguanfoc.o --depend bldc_control\sguanfoc.d)
 I (..\SguanFOC\SguanFOC.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_Filter.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_math.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Calculate.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Calculate.h)(0x6A86CECB)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 I (..\SguanFOC\Sguan_FW.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_Ladrc.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_MotorStatus.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Status.h)(0x6A82845A)
-I (..\SguanFOC\Sguan_PID.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Status.h)(0x6A86BEFA)
+I (../Core/Inc/foc_app.h)(0x6A86C955)
+I (..\SguanFOC\Sguan_PID.h)(0x6A86BF83)
 I (..\SguanFOC\Sguan_PLL.h)(0x6A82845A)
 I (..\SguanFOC\Sguan_printf.h)(0x6A856EAA)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5E8E3CC2)
-I (..\SguanFOC\UserData_Function.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Motor.h)(0x6A82845A)
-I (..\SguanFOC\UserData_Parameter.h)(0x6A82845A)
-I (..\SguanFOC\UserData_UserControl.h)(0x6A82845A)
+I (..\SguanFOC\UserData_Function.h)(0x6A86B9B7)
+I (../Core/Inc/main.h)(0x6A868A3C)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x656ECCCC)
+I (../Core/Inc/stm32f4xx_hal_conf.h)(0x6A866FCD)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h)(0x656ECCCC)
+I (../Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f4xx.h)(0x656ECCCC)
+I (../Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f407xx.h)(0x656ECCCC)
+I (../Drivers/CMSIS/Include/core_cm4.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Include/cmsis_version.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Include/cmsis_compiler.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Include/cmsis_armcc.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Include/mpu_armv7.h)(0x656ECCB0)
+I (../Drivers/CMSIS/Device/ST/STM32F4xx/Include/system_stm32f4xx.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h)(0x656ECCCC)
+I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stddef.h)(0x5E8E3CC2)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_gpio.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_gpio_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_exti.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_dma.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_dma_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_cortex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_adc.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_adc.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_adc_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash_ramfunc.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_i2c.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_i2c_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
+I (..\SguanFOC\UserData_Motor.h)(0x6A86CE95)
+I (../BSP_Driver/drv8301.h)(0x6A857F60)
+I (..\SguanFOC\UserData_Parameter.h)(0x6A86CE64)
+I (..\SguanFOC\UserData_UserControl.h)(0x6A86C971)

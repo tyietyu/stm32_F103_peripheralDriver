@@ -16,6 +16,11 @@ typedef struct{
     float I_num[2]; // (中间量)积分传递函数分子系数
     float D_num[2]; // (中间量)微分传递函数分子系数
     float D_den[2]; // (中间量)微分传递函数分母系数
+
+    uint8_t IntegralFrozen; // (状态)积分冻结标志位，必须每个实例独立
+    /* [PATCH-1] 原实现是 PID_Loop() 内的函数级 static，Current_D/Current_Q/
+       Velocity/Position 四个实例共享同一份冻结状态，D 轴积分饱和会把 Q 轴的
+       积分一起冻住。详见 docs/sguanfoc-patch.md */
 }RUN_STRUCT;
 
 typedef struct{

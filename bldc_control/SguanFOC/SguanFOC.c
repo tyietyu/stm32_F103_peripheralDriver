@@ -919,7 +919,11 @@ static void Sguan_Start_Tick(void){
         Sguan.status = MOTOR_STATUS_CALIBRATING;
         Offset_CurrentRead(&Sguan);
         //电机回零操作
-        Sguan_Positioning_Set(&Sguan,0.3f*Sguan.motor.VBUS,0.0f);
+        /* [PATCH-4] 原实现固定 0.3f*VBUS。SVPWM 归一化后相电压 = ratio*VBUS/sqrt(3)，
+           0.3 在 24 V 母线下是 4.16 V，配 0.19 Ω 相阻约 22 A，超出 ±16.5 A 采样量程
+           并会触发 DRV8301 的 OC 锁存。比例改由 UserData_Calculate.h 配置。
+           详见 docs/sguanfoc-patch.md */
+        Sguan_Positioning_Set(&Sguan,Align_Voltage_Ratio*Sguan.motor.VBUS,0.0f);
         User_Delay(1000);
         // 读取角度偏置
         Offset_EncoderRead(&Sguan);
@@ -983,7 +987,9 @@ void SguanFOC_High_Loop(void){
     }
     else{
         PWM_watchdog_counter++;
-        Sguan.flag.PWM_Calc = 0;
+        /* [PATCH-3] 原实现在此把 Sguan.flag.PWM_Calc 清零（写反了），下一帧会误判
+           为空闲，重入保护与看门狗同时失效。忙标志只应由持有方在退出时清零。
+           详见 docs/sguanfoc-patch.md */
         if (PWM_watchdog_counter > Sguan.flag.PWM_watchdog_limit){
             Sguan.status = MOTOR_STATUS_PWM_CALC_FAULT;
             PWM_watchdog_counter = 0;

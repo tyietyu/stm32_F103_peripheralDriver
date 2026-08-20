@@ -28,8 +28,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "as5600.h"
 #include "delay.h"
+#include "drv8301.h"
+#include "foc_app.h"
+#include "SguanFOC.h"
 
 /* USER CODE END Includes */
 
@@ -51,7 +53,6 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-static AS5600_T g_encoder;
 
 /* USER CODE END PV */
 
@@ -102,12 +103,14 @@ int main(void)
   MX_SPI2_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  /* AS5600 写 CONF 后的建立等待用 delay_us()，必须早于 AS5600_Init() */
+  /* AS5600 写 CONF 后的建立等待用 delay_us()，必须早于 FocApp_Init() */
   delay_init();
-  if (AS5600_Init(&g_encoder, &hi2c1) != 0)
-  {
-    Error_Handler();
-  }
+  /*
+   * 装配应用层并把 Sguan.status 写成 0x01。外设的实际启动（DRV8301 / AS5600 /
+   * TIM2 / TIM1 六路 PWM / ADC 注入组）在 while(1) 的 Sguan_Start_Tick() ->
+   * User_InitialInit() -> FocApp_HwStart() 里完成，那里允许阻塞等待。
+   */
+  FocApp_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -117,17 +120,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* 移植验证用的 1 ms 节拍；正式的周期任务归属待架构方案确定后再迁移 */
-    static uint32_t encoder_tick = 0U;
-    uint32_t now = HAL_GetTick();
-
-    if (now != encoder_tick)
-    {
-      encoder_tick = now;
-      (void)AS5600_UpdateStart(&g_encoder);
-    }
+    /* 上电初始化与标定（仅 status==0x01 时执行一次）+ JustFloat 波形上报 */
+    SguanFOC_main_Loop();
+    /* 10 Hz 自限速：DRV8301 / AS5600 状态轮询，只置故障标志 */
+    FocApp_DiagnoseLoop();
   }
-  
+
   /* USER CODE END 3 */
 }
 
@@ -176,24 +174,9 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 /*
- * HAL 的 I2C 回调是全局弱符号，放在应用层转发而不是塞进 BSP 驱动，
- * 后续接入 FOC 应用层时驱动不需要再改。本板 I2C1 上只挂了 AS5600。
+ * HAL 的 I2C / ADC / TIM / UART 回调统一放在 Core/Src/foc_app.c，
+ * 应用层持有 AS5600 实例，本文件只负责启动序列与主循环调度。
  */
-void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
-{
-  if (hi2c->Instance == I2C1)
-  {
-    AS5600_OnRxComplete(&g_encoder);
-  }
-}
-
-void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
-{
-  if (hi2c->Instance == I2C1)
-  {
-    AS5600_OnRxError(&g_encoder);
-  }
-}
 
 /* USER CODE END 4 */
 
@@ -204,10 +187,13 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+  /* 挂起前先硬关断栅极。MX_GPIO_Init() 已把 EN_GATE 配成推挽输出并置低，
+     更早的阶段引脚仍是复位后的浮空输入，由驱动器自身下拉保证关断 */
+  DRV8301_Shutdown();
   __disable_irq();
   while (1)
   {
-    
+
   }
   /* USER CODE END Error_Handler_Debug */
 }

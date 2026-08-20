@@ -1,6 +1,7 @@
 --cpu=Cortex-M4.fp.sp
 "bldc_control\startup_stm32f407xx.o"
 "bldc_control\main.o"
+"bldc_control\foc_app.o"
 "bldc_control\gpio.o"
 "bldc_control\adc.o"
 "bldc_control\dma.o"

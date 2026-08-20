@@ -399,6 +399,11 @@
               <FilePath>../Core/Src/main.c</FilePath>
             </File>
             <File>
+              <FileName>foc_app.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/foc_app.c</FilePath>
+            </File>
+            <File>
               <FileName>gpio.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/gpio.c</FilePath>

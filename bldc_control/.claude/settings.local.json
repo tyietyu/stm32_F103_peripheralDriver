@@ -20,7 +20,20 @@
       "Bash(mkdir -p /tmp/focstub)",
       "Bash(printf '#ifndef FOC_CONFIG_H\\\\n#define FOC_CONFIG_H\\\\n#define USE_SPEED_LOOP 0\\\\n#define USE_POSITION_LOOP 0\\\\n#endif\\\\n')",
       "Read(//tmp/focstub/**)",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(cd \"e:/0001_LCWork/project_STM32/stm32_F103_peripheralDriver/bldc_control\" && ls -la && echo \"---- 查找方案文档 ----\" && find .. -iname \"*SguanFOC*\" -o -iname \"*FOC*.md\" 2>/dev/null | head -20)",
+      "Bash(sed -n '/HAL_StatusTypeDef HAL_ADCEx_InjectedStart_IT/,/^}/p' Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc_ex.c)",
+      "Bash(sed -n '/void HAL_ADC_IRQHandler/,/^}/p' Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc.c)",
+      "Bash(\"D:/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -b bldc_control.uvprojx -j0 -o build_baseline.log)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(\"D:/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -r bldc_control.uvprojx -j0 -o build_foc.log)",
+      "Bash(sed -n '/HAL_StatusTypeDef HAL_TIM_Base_Start_IT/,/^}/p' Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c)",
+      "Bash(sed -n '/HAL_StatusTypeDef HAL_TIM_PWM_Start\\(/,/^}/p' Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c)",
+      "Bash(\"D:/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -r bldc_control.uvprojx -j0 -o build_foc2.log)",
+      "Bash(awk 'BEGIN{ *)",
+      "Bash(\"D:/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -r bldc_control.uvprojx -j0 -o build_foc3.log)",
+      "Bash(\"D:/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -r bldc_control.uvprojx -j0 -o build_final.log)",
+      "Bash(rm -f build_final.log)"
     ]
   }
 }

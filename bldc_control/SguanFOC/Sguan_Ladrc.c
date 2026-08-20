@@ -76,11 +76,12 @@ void Ladrc_Init(LADRC_STRUCT *ladrc){
     // 计算控制器系数
     ladrc->data.Kp = ladrc->wc * ladrc->wc;
     ladrc->data.Kd = 2.0f * ladrc->wc;
-    
-    // 默认输出限幅
-    ladrc->OutMax = 2000.0f;
-    ladrc->OutMin = -2000.0f;
-    
+
+    /* [PATCH-2] 原实现在此硬编码 OutMax/OutMin = ±2000。调用顺序是
+       User_ParameterSet() -> Sguan_Control_Init() -> Ladrc_Init()，
+       用户限幅必然被冲掉，速度环输出（= Iq 给定）实质无限幅。
+       详见 docs/sguanfoc-patch.md */
+
     // 初始化所有运行变量为零
     ladrc->linear.v1 = 0.0f;
     ladrc->linear.v2 = 0.0f;

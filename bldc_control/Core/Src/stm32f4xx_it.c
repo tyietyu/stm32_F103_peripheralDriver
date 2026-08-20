@@ -22,6 +22,7 @@
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "foc_app.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -90,7 +91,9 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+  /* 本板 nFAULT/BKIN 未接 MCU，CPU 挂死时 TIM1 仍在跑、CCR 冻结在上一帧的电压
+     矢量上，电机会承受持续直流。进死循环前必须先杀栅极 */
+  FocApp_Shutdown();
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
