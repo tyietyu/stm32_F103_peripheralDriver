@@ -78,6 +78,10 @@ void BLDC_Stop(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define CKTIM 168000000
+#define PWM_PRSC 0
+#define PWM_FREQ 15000
+#define PWM_PERIOD CKTIM/(2*PWM_FREQ*(PWM_PRSC+1))
 #define EN_GATE_Pin GPIO_PIN_0
 #define EN_GATE_GPIO_Port GPIOC
 #define DC_CAL_Pin GPIO_PIN_1
@@ -92,6 +96,8 @@ void BLDC_Stop(void);
 #define I_CHANNEL_U_GPIO_Port GPIOA
 #define I_CHANNEL_V_Pin GPIO_PIN_4
 #define I_CHANNEL_V_GPIO_Port GPIOA
+#define I_CHANNEL_W_Pin GPIO_PIN_5
+#define I_CHANNEL_W_GPIO_Port GPIOA
 #define LED_Pin GPIO_PIN_2
 #define LED_GPIO_Port GPIOB
 #define SPI2_CS_Pin GPIO_PIN_12

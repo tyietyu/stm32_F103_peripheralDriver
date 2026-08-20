@@ -16,7 +16,11 @@
       "Bash(grep -n \"不执行速度环和位置环\\\\|不增加速度、位置和其他运动控制模式\\\\|只保留 \\\\`iq_ref\\\\` 电流模式\\\\|满足基本容差\\\\|三路 offset 校准通过\\\\|TIMING（仅比较触发）\\\\|接近谷值\" foc_driver_config_review_plan.md)",
       "Bash(git mv *)",
       "Bash(cd \"e:/0001_LCWork/project_STM32/stm32_F103_peripheralDriver/bldc_control\" && grep -o '<IncludePath>[^<]*</IncludePath>' MDK-ARM/bldc_control.uvprojx | head -3; echo \"---DEFINES---\"; grep -o '<Define>[^<]*</Define>' MDK-ARM/bldc_control.uvprojx | head -3; echo \"---DRIVERS---\"; ls .. | head; ls ../Drivers 2>/dev/null | head)",
-      "Read(//e/0001_LCWork/project_STM32/stm32_F103_peripheralDriver/**)"
+      "Read(//e/0001_LCWork/project_STM32/stm32_F103_peripheralDriver/**)",
+      "Bash(mkdir -p /tmp/focstub)",
+      "Bash(printf '#ifndef FOC_CONFIG_H\\\\n#define FOC_CONFIG_H\\\\n#define USE_SPEED_LOOP 0\\\\n#define USE_POSITION_LOOP 0\\\\n#endif\\\\n')",
+      "Read(//tmp/focstub/**)",
+      "Bash(git diff *)"
     ]
   }
 }

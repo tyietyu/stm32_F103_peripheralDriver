@@ -12,11 +12,13 @@
 #define DRV8301_CS_HIGH() \
     HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET)
 
-#define DRV8301_SPI_TIMEOUT     100U
+/* EN_GATE 低 = 器件休眠、栅极关断、SPI 不响应；高 = 正常工作 */
+#define DRV8301_EN_GATE_LOW() \
+    HAL_GPIO_WritePin(EN_GATE_GPIO_Port, EN_GATE_Pin, GPIO_PIN_RESET)
+#define DRV8301_EN_GATE_HIGH() \
+    HAL_GPIO_WritePin(EN_GATE_GPIO_Port, EN_GATE_Pin, GPIO_PIN_SET)
 
-/* Datasheet tSU_SCS/tHD_SCS are 50 ns; use at least 100 ns and verify on-board. */
-#define DRV8301_CS_DELAY_CYCLES ((SystemCoreClock / 10000000U) + 1U)
-#define DRV8301_CS_DELAY()      DRV8301_DelayCoreCycles(DRV8301_CS_DELAY_CYCLES)
+#define DRV8301_SPI_TIMEOUT     100U
 
 #if (DRV8301_SHUNT_GAIN == 10U)
 #define DRV8301_CTRL2_GAIN_CONFIG DRV8301_CR2_GAIN_10
@@ -47,35 +49,9 @@
 
 static SPI_HandleTypeDef *drv8301_hspi = NULL;
 
-static void DRV8301_DelayCoreCycles(uint32_t cycles)
-{
-    while (cycles > 0U)
-    {
-        __NOP();
-        --cycles;
-    }
-}
-
-static DRV8301_Result_t DRV8301_WaitSpiIdle(void)
-{
-    uint32_t tick_start;
-
-    tick_start = HAL_GetTick();
-    while (__HAL_SPI_GET_FLAG(drv8301_hspi, SPI_FLAG_BSY) != RESET)
-    {
-        if ((HAL_GetTick() - tick_start) >= DRV8301_SPI_TIMEOUT)
-        {
-            return DRV8301_ERROR_SPI;
-        }
-    }
-
-    return DRV8301_OK;
-}
-
 static DRV8301_Result_t DRV8301_Transfer(uint16_t tx_data, uint16_t *rx_data)
 {
     HAL_StatusTypeDef status;
-    DRV8301_Result_t result;
 
     if ((drv8301_hspi == NULL) || (rx_data == NULL))
     {
@@ -87,15 +63,10 @@ static DRV8301_Result_t DRV8301_Transfer(uint16_t tx_data, uint16_t *rx_data)
     }
 
     DRV8301_CS_LOW();
-    DRV8301_CS_DELAY();
-
     status = HAL_SPI_TransmitReceive(drv8301_hspi, (uint8_t *)&tx_data, (uint8_t *)rx_data, 1U, DRV8301_SPI_TIMEOUT);
-    result = (status == HAL_OK) ? DRV8301_WaitSpiIdle() : DRV8301_ERROR_SPI;
-
-    DRV8301_CS_DELAY();
     DRV8301_CS_HIGH();
 
-    return result;
+    return (status == HAL_OK) ? DRV8301_OK : DRV8301_ERROR_SPI;
 }
 
 static DRV8301_Result_t DRV8301_CheckReadResponse(uint16_t response, uint8_t expected_addr)
@@ -133,7 +104,6 @@ static DRV8301_Result_t DRV8301_ReadReg(uint8_t addr, uint16_t *data)
         return result;
     }
 
-    DRV8301_CS_DELAY();
     result = DRV8301_Transfer(command, &response);
     if (result != DRV8301_OK)
     {
@@ -191,44 +161,30 @@ static DRV8301_Result_t DRV8301_WriteRegVerified(uint8_t addr, uint16_t data)
     return DRV8301_OK;
 }
 
+/*
+ * GATE_RESET 位触发后由器件自动回 0（手册 Table 11 "reverts to 0"），因此写 1
+ * 之后无需再手工清位，直接读 STATUS1 确认 FAULT 已消失即可。
+ */
 static DRV8301_Result_t DRV8301_ClearFaults(void)
 {
     uint16_t ctrl1;
     uint16_t status1;
-    uint16_t status2;
     DRV8301_Result_t result;
 
-    result = DRV8301_ReadReg(DRV8301_REG_STATUS1, &status1);
-    if (result != DRV8301_OK)
-    {
-        return result;
-    }
-    result = DRV8301_ReadReg(DRV8301_REG_STATUS2, &status2);
-    if (result != DRV8301_OK)
-    {
-        return result;
-    }
     result = DRV8301_ReadReg(DRV8301_REG_CTRL1, &ctrl1);
     if (result != DRV8301_OK)
     {
         return result;
     }
 
-    ctrl1 |= DRV8301_CR1_GATE_RESET_LATCHED;
-    result = DRV8301_WriteReg(DRV8301_REG_CTRL1, ctrl1);
+    result = DRV8301_WriteReg(DRV8301_REG_CTRL1,
+                              (uint16_t)(ctrl1 | DRV8301_CR1_GATE_RESET_LATCHED));
     if (result != DRV8301_OK)
     {
         return result;
     }
 
     HAL_Delay(1U);
-
-    ctrl1 &= (uint16_t)~DRV8301_CR1_GATE_RESET_Msk;
-    result = DRV8301_WriteRegVerified(DRV8301_REG_CTRL1, ctrl1);
-    if (result != DRV8301_OK)
-    {
-        return result;
-    }
 
     result = DRV8301_ReadReg(DRV8301_REG_STATUS1, &status1);
     if (result != DRV8301_OK)
@@ -237,23 +193,6 @@ static DRV8301_Result_t DRV8301_ClearFaults(void)
     }
 
     return ((status1 & DRV8301_SR1_FAULT) == 0U) ? DRV8301_OK : DRV8301_ERROR_FAULT;
-}
-
-static DRV8301_Result_t DRV8301_CheckStatus2(uint16_t status2)
-{
-    uint8_t device_id;
-
-    device_id = (uint8_t)((status2 & DRV8301_SR2_DEVICE_ID_Msk) >> DRV8301_SR2_DEVICE_ID_Pos);
-    if (device_id != DRV8301_DEVICE_ID_VALUE)
-    {
-        return DRV8301_ERROR_DEVICE_ID;
-    }
-    if ((status2 & DRV8301_SR2_GVDD_OV) != 0U)
-    {
-        return DRV8301_ERROR_FAULT;
-    }
-
-    return DRV8301_OK;
 }
 
 DRV8301_Result_t DRV8301_Init(SPI_HandleTypeDef *hspi)
@@ -270,6 +209,9 @@ DRV8301_Result_t DRV8301_Init(SPI_HandleTypeDef *hspi)
     drv8301_hspi = hspi;
     DRV8301_CS_HIGH();
 
+    /* EN_GATE 必须先拉高，否则器件处于休眠态、SPI 不会响应任何帧 */
+    DRV8301_EN_GATE_HIGH();
+
     /* Datasheet tSPI_READY is 5 ms typical and 10 ms maximum. */
     HAL_Delay(10U);
 
@@ -278,10 +220,9 @@ DRV8301_Result_t DRV8301_Init(SPI_HandleTypeDef *hspi)
     {
         return result;
     }
-    result = DRV8301_CheckStatus2(status2);
-    if (result != DRV8301_OK)
+    if ((status2 & DRV8301_SR2_GVDD_OV) != 0U)
     {
-        return result;
+        return DRV8301_ERROR_FAULT;
     }
 
     result = DRV8301_ClearFaults();
@@ -306,23 +247,13 @@ DRV8301_Result_t DRV8301_Init(SPI_HandleTypeDef *hspi)
     {
         return result;
     }
-    result = DRV8301_ReadReg(DRV8301_REG_STATUS2, &status2);
-    if (result != DRV8301_OK)
-    {
-        return result;
-    }
-    result = DRV8301_CheckStatus2(status2);
-    if (result != DRV8301_OK)
-    {
-        return result;
-    }
 
     return ((status1 & DRV8301_SR1_FAULT) == 0U) ? DRV8301_OK : DRV8301_ERROR_FAULT;
 }
 
-DRV8301_Result_t DRV8301_ReadStatus1(uint16_t *status)
+void DRV8301_Shutdown(void)
 {
-    return DRV8301_ReadReg(DRV8301_REG_STATUS1, status);
+    DRV8301_EN_GATE_LOW();
 }
 
 DRV8301_Result_t DRV8301_ReadStatus(uint16_t *status1, uint16_t *status2)
@@ -340,11 +271,5 @@ DRV8301_Result_t DRV8301_ReadStatus(uint16_t *status1, uint16_t *status2)
         return result;
     }
 
-    result = DRV8301_ReadReg(DRV8301_REG_STATUS2, status2);
-    if (result != DRV8301_OK)
-    {
-        return result;
-    }
-
-    return DRV8301_CheckStatus2(*status2);
+    return DRV8301_ReadReg(DRV8301_REG_STATUS2, status2);
 }

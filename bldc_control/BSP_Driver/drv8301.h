@@ -16,6 +16,21 @@ extern "C" {
 #endif
 
 /*============================================================================*/
+/*                        Board-Level Configuration                            */
+/*============================================================================*/
+/*
+ * 电流采样标定（依据 SCH_Motor.pdf）：三相 shunt 均为 10 mΩ。C 相不走 DRV8301
+ * 内部放大器，而是外接 LM2904（R45=1k / R47=10k，增益 10 V/V），因此内部增益
+ * 必须同样取 10 V/V，三相才能共用一套标定系数。
+ * 0.010 Ω x 10 V/V = 0.1 V/A，3.3 V 量程叠加 REF/2 偏置后约 ±16.5 A。
+ */
+#ifndef DRV8301_SHUNT_GAIN
+#define DRV8301_SHUNT_GAIN          10U
+#endif
+#define DRV8301_SHUNT_RESISTANCE    0.010f
+#define DRV8301_VOLTS_PER_AMP       (DRV8301_SHUNT_RESISTANCE * (float)DRV8301_SHUNT_GAIN)
+
+/*============================================================================*/
 /*                           SPI Frame Format                                  */
 /*============================================================================*/
 /* SPI 16-bit frame structure:
@@ -98,9 +113,12 @@ extern "C" {
 
 #define DRV8301_SR2_DEVICE_ID_Pos   0
 #define DRV8301_SR2_DEVICE_ID_Msk   (0x0FU << DRV8301_SR2_DEVICE_ID_Pos)
-#define DRV8301_SR2_DEVICE_ID       DRV8301_SR2_DEVICE_ID_Msk /* Device ID (should be 0x01) */
+#define DRV8301_SR2_DEVICE_ID       DRV8301_SR2_DEVICE_ID_Msk /* Device ID */
 
-#define DRV8301_DEVICE_ID_VALUE     0x01    /* Expected Device ID */
+/*
+ * 手册 Table 10 只定义了 Device ID[3:0] 字段，未给出期望值，因此驱动不做校验，
+ * 由上层从 DRV8301_ReadStatus() 返回的 status2 中自行读取判断。
+ */
 
 /*============================================================================*/
 /*                       Control Register 1 (0x02)                             */
@@ -249,37 +267,27 @@ typedef enum {
     DRV8301_ERROR_FRAME = -3,
     DRV8301_ERROR_ADDRESS = -4,
     DRV8301_ERROR_VERIFY = -5,
-    DRV8301_ERROR_DEVICE_ID = -6,
-    DRV8301_ERROR_FAULT = -7
+    DRV8301_ERROR_FAULT = -6
 } DRV8301_Result_t;
-
-/*============================================================================*/
-/*                      Gain Value Lookup                                      */
-/*============================================================================*/
-
-/* Shunt amplifier gain values for current calculation */
-#define DRV8301_GAIN_VALUE_10   10.0f
-#define DRV8301_GAIN_VALUE_20   20.0f
-#define DRV8301_GAIN_VALUE_40   40.0f
-#define DRV8301_GAIN_VALUE_80   80.0f
 
 /*============================================================================*/
 /*                         Function Prototypes                                 */
 /*============================================================================*/
 
 /**
- * @brief Initialize DRV8301 and verify the fixed board configuration.
+ * @brief Enable the device (EN_GATE high) and apply the fixed board configuration.
  * @param hspi SPI handle configured for 16-bit transfers.
  * @return DRV8301 operation result.
+ * @note  EN_GATE 拉低时器件休眠且 SPI 完全不响应，因此必须由本函数先使能。
  */
 DRV8301_Result_t DRV8301_Init(SPI_HandleTypeDef *hspi);
 
 /**
- * @brief Read Status Register 1.
- * @param status Register value output.
- * @return DRV8301 operation result.
+ * @brief Pull EN_GATE low to shut down the gate driver immediately.
+ * @note  本板 nFAULT/nOCTW 未接 MCU，这是唯一的软件级硬关断手段，急停必须调用。
  */
-DRV8301_Result_t DRV8301_ReadStatus1(uint16_t *status);
+void DRV8301_Shutdown(void);
+
 /**
  * @brief Read both status registers for low-rate diagnostics.
  */

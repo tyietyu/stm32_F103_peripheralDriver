@@ -97,6 +97,7 @@ static void AS5600_PublishSample(AS5600_T *sensor, uint16_t raw_angle, uint32_t 
   sensor->full_angle = sensor->rotation_offset + sensor->mechanical_angle;
   sensor->last_success_tick = now;
   sensor->error_count = 0U;
+  sensor->step_reject_count = 0U;
   sensor->valid = true;
 }
 
@@ -104,7 +105,6 @@ int AS5600_Init(AS5600_T *sensor)
 {
   uint8_t status = 0U;
   uint16_t raw_angle = 0U;
-  uint32_t now;
 
   if (sensor == NULL)
   {
@@ -117,13 +117,11 @@ int AS5600_Init(AS5600_T *sensor)
   sensor->full_angle = 0.0f;
   sensor->rotation_offset = 0.0f;
   sensor->last_success_tick = 0U;
-  sensor->velocity_previous_angle = 0.0f;
-  sensor->velocity_previous_tick = 0U;
   sensor->error_count = 0U;
+  sensor->step_reject_count = 0U;
   sensor->magnet_detected = false;
   sensor->valid = false;
 
-  delay_init();
   if (IICInit(sensor->i2c_ins) != 0U)
   {
     return -1;
@@ -155,18 +153,15 @@ int AS5600_Init(AS5600_T *sensor)
     return -1;
   }
 
-  now = HAL_GetTick();
-  AS5600_PublishSample(sensor, raw_angle, now);
-  sensor->velocity_previous_angle = sensor->full_angle;
-  sensor->velocity_previous_tick = now;
+  AS5600_PublishSample(sensor, raw_angle, HAL_GetTick());
   return 0;
 }
 
 int AS5600_Update(AS5600_T *sensor)
 {
   int32_t delta;
+  float wrap = 0.0f;
   uint16_t raw_angle;
-  uint32_t now;
 
   if ((sensor == NULL) || (!sensor->magnet_detected))
   {
@@ -179,35 +174,31 @@ int AS5600_Update(AS5600_T *sensor)
     return -1;
   }
 
+  /* 折叠到 ±半圈得到真实步进，折叠方向同时给出跨圈量 */
   delta = (int32_t)raw_angle - (int32_t)sensor->raw_angle;
   if (delta > ((int32_t)AS5600_RESOLUTION / 2))
   {
     delta -= (int32_t)AS5600_RESOLUTION;
+    wrap = -AS5600_TWO_PI;
   }
   else if (delta < -((int32_t)AS5600_RESOLUTION / 2))
   {
     delta += (int32_t)AS5600_RESOLUTION;
+    wrap = AS5600_TWO_PI;
   }
-
+  
   if ((delta > AS5600_MAX_STEP_COUNTS) || (delta < -AS5600_MAX_STEP_COUNTS))
   {
     AS5600_RecordReadError(sensor);
-    return -1;
+    if (sensor->step_reject_count < AS5600_MAX_STEP_REJECT)
+    {
+      ++sensor->step_reject_count;
+      return -1;
+    }
   }
 
-  if (((int32_t)raw_angle - (int32_t)sensor->raw_angle) >
-      ((int32_t)AS5600_RESOLUTION / 2))
-  {
-    sensor->rotation_offset -= AS5600_TWO_PI;
-  }
-  else if (((int32_t)raw_angle - (int32_t)sensor->raw_angle) <
-           -((int32_t)AS5600_RESOLUTION / 2))
-  {
-    sensor->rotation_offset += AS5600_TWO_PI;
-  }
-
-  now = HAL_GetTick();
-  AS5600_PublishSample(sensor, raw_angle, now);
+  sensor->rotation_offset += wrap;
+  AS5600_PublishSample(sensor, raw_angle, HAL_GetTick());
   return 0;
 }
 
@@ -243,10 +234,6 @@ int AS5600_CheckStatus(AS5600_T *sensor)
   return 0;
 }
 
-uint16_t AS5600_GetRawAngle(const AS5600_T *sensor)
-{
-  return (sensor != NULL) ? sensor->raw_angle : 0U;
-}
 float AS5600_GetOnceAngle(const AS5600_T *sensor)
 {
   return (sensor != NULL) ? sensor->mechanical_angle : 0.0f;
@@ -255,43 +242,6 @@ float AS5600_GetOnceAngle(const AS5600_T *sensor)
 float AS5600_GetAngle(const AS5600_T *sensor)
 {
   return (sensor != NULL) ? sensor->full_angle : 0.0f;
-}
-
-/*
- * 相邻两次采样的差分测速。dt 时基为 HAL_GetTick，分辨率 1 ms，与 TIM2 相位漂移
- * 叠加软件 I2C 抖动后 dt 误差可达 +-100%，且量化台阶 1.534 rad/s 已达速度参考
- * 满量程的 15%。仅供调试观察，速度环反馈必须走 FOC 的跟踪观测器。
- */
-float AS5600_GetVelocity(AS5600_T *sensor)
-{
-  float dt;
-  float velocity;
-
-  if (!AS5600_IsValid(sensor))
-  {
-    return 0.0f;
-  }
-
-  dt = (float)(sensor->last_success_tick - sensor->velocity_previous_tick) * 1e-3f;
-  if (dt <= 0.0f)
-  {
-    return 0.0f;
-  }
-
-  velocity = (sensor->full_angle - sensor->velocity_previous_angle) / dt;
-  sensor->velocity_previous_angle = sensor->full_angle;
-  sensor->velocity_previous_tick = sensor->last_success_tick;
-  return velocity;
-}
-
-uint32_t AS5600_GetLastSuccessTick(const AS5600_T *sensor)
-{
-  return (sensor != NULL) ? sensor->last_success_tick : 0U;
-}
-
-uint16_t AS5600_GetErrorCount(const AS5600_T *sensor)
-{
-  return (sensor != NULL) ? sensor->error_count : 0U;
 }
 
 bool AS5600_IsValid(const AS5600_T *sensor)
