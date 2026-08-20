@@ -63,7 +63,7 @@ void Error_Handler(void);
 #define CKTIM 168000000
 #define PWM_PRSC 0
 #define PWM_FREQ 15000
-#define PWM_PERIOD CKTIM/(2*PWM_FREQ*(PWM_PRSC+1))
+#define PWM_PERIOD (CKTIM/(2*PWM_FREQ*(PWM_PRSC+1)))
 #define EN_GATE_Pin GPIO_PIN_0
 #define EN_GATE_GPIO_Port GPIOC
 #define DC_CAL_Pin GPIO_PIN_1
