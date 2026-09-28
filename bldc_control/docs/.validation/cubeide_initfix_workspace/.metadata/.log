@@ -1,0 +1,10 @@
+!SESSION 2026-09-17 14:42:51.028 -----------------------------------------------
+eclipse.buildId=Version 2.0.0
+java.version=21.0.8
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=win32, ARCH=x86_64, WS=win32, NL=zh_CN
+Framework arguments:  -application org.eclipse.cdt.managedbuilder.core.headlessbuild -import E:\A_Intellmedic_Embedd_GitLab_File\surgicalRobot\Software\SurgicalRobot_WirelessRF\nfc_slave1013b\nfc_slave -build nfc_slave/Debug -build nfc_slave/Release
+Command-line arguments:  -os win32 -ws win32 -arch x86_64 -application org.eclipse.cdt.managedbuilder.core.headlessbuild -data E:\A_Intellmedic_Embedd_GitLab_File\surgicalRobot\Software\SurgicalRobot_WirelessRF\docs\.validation\cubeide_initfix_workspace -import E:\A_Intellmedic_Embedd_GitLab_File\surgicalRobot\Software\SurgicalRobot_WirelessRF\nfc_slave1013b\nfc_slave -build nfc_slave/Debug -build nfc_slave/Release
+
+!ENTRY org.eclipse.cdt.core 1 0 2026-09-17 14:42:59.240
+!MESSAGE Indexed 'nfc_slave' (31 sources, 104 headers) in 4.38 sec: 10,029 declarations; 48,507 references; 6 unresolved inclusions; 919 syntax errors; 1,040 unresolved names (1.7%)

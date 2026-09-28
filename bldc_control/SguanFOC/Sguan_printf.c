@@ -53,6 +53,8 @@ static float Get_Data(void){
     for(uint8_t i = 0; i < 200; i++){
         if(Sguan_PrintfBuff[i] == '=') data_Start_Num = i + 1;
         if(Sguan_PrintfBuff[i] == '?'){
+            /* 帧只有 '?' 时 i-1 会回绕成 255，下方 uint8_t 循环 i<=255 永不结束，卡死 USART1 中断 */
+            if(i == 0) return 0.0f;
             data_End_Num = i - 1;
             break;
         }

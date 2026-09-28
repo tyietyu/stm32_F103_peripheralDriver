@@ -33,7 +33,13 @@
       "Bash(awk 'BEGIN{ *)",
       "Bash(\"D:/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -r bldc_control.uvprojx -j0 -o build_foc3.log)",
       "Bash(\"D:/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -r bldc_control.uvprojx -j0 -o build_final.log)",
-      "Bash(rm -f build_final.log)"
+      "Bash(rm -f build_final.log)",
+      "Bash(grep -v \"^ \\\\*\\\\|^/\\\\*\")",
+      "Bash(\"/d/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -j0 -b bldc_control.uvprojx -t bldc_control -o build_verify.log)",
+      "Bash(\"/d/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -j0 -r bldc_control.uvprojx -t bldc_control -o build_verify.log)",
+      "Bash(grep -oE \"<STRONG><a name=\\\\\"\\\\[[0-9a-f]+\\\\]\\\\\"></a>\\(ADC_IRQHandler|TIM2_IRQHandler|USART1_IRQHandler|__2printf|SguanFOC_High_Loop|Printf_Debug_Loop|fputc|SguanFOC_Printf_Loop|Printf_Adjust\\)</STRONG>[^<]*\\(<[^>]*>[^<]*\\){0,6}\" bldc_control.htm)",
+      "Bash(\"D:/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -b bldc_control.uvprojx -j0 -o \"C:/Users/admin/AppData/Local/Temp/sguan_printf_test/keil_build.txt\")",
+      "Bash(echo \"uv4 exit=$?\")"
     ]
   }
 }

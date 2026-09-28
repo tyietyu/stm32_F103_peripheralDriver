@@ -20,22 +20,18 @@ static inline void User_MotorSet(void){
        二期若要开前馈，填“真实值的 sqrt(3) 倍”，不需要改库。 */
     Sguan.identify.Ld = 0.0f;           // (float)D轴电感
     Sguan.identify.Lq = 0.0f;           // (float)Q轴电感
-    Sguan.identify.Ls = 0.0f;           // (float)相线电感
-    Sguan.identify.Rs = 0.0f;           // (float)相线电阻
+    Sguan.identify.Ls = 1.90f;           // (float)相线电感
+    Sguan.identify.Rs = 8.53f;           // (float)相线电阻
     Sguan.identify.Flux = 0.0f;         // (float)磁链
     // 4.motor电机参数辨识
-    Sguan.motor.Poles = 11;             // (uint8_t)极对极数，实测确认
+    Sguan.motor.Poles = 11;             // (uint8_t)极对极数
     Sguan.motor.VBUS = 24.0f;           // (float)母线电压
-
-    /* 以下四个方向量必须在台架上按方案 6.5 的顺序逐项确认，不能猜 */
     Sguan.motor.Motor_Dir = 1;          // (int8_t)电机方向，-1 时库交换 U/V 相序
     Sguan.motor.PWM_Dir = 1;            // (int8_t)PWM1模式 + OCPolarity HIGH：CCR↑ -> 高边导通↑
     Sguan.motor.Duty = PWM_PERIOD;      // (uint16_t)SVPWM_Tick 用 Du*Duty 得 CCR，须等于 ARR
-
-    Sguan.motor.Encoder_Dir = 1;        // (int8_t)编码器方向，台架待定
-
-    Sguan.motor.Current_Dir0 = 1;       // (int8_t)相线电流方向，台架待定
-    Sguan.motor.Current_Dir1 = 1;       // (int8_t)相线电流方向，台架待定
+    Sguan.motor.Encoder_Dir = 1;        // (int8_t)编码器方向
+    Sguan.motor.Current_Dir0 = 1;       // (int8_t)相线电流方向
+    Sguan.motor.Current_Dir1 = 1;       // (int8_t)相线电流方向
     /* AB 采样：IC_FB 走外接 LM2904，与 DRV8301 内部放大器存在增益/失调失配，
        不让它进控制环，只在诊断中与 -(Ia+Ib) 的重构值比对 */
     Sguan.motor.Current_Num = 0;        // (uint8_t)电流通道0->AB相，1->AC相，2->BC相

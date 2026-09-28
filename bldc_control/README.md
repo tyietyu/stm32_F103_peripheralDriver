@@ -48,6 +48,7 @@ DRV8301_Init(&hspi2);         /* 返回 DRV8301_OK 表示已使能并完成配�
 
 ### AS5600
 
+* VCC --红；GND--黑；SCL--黄；SDA--绿；
 * 走硬件 I2C1（PB6/PB7，400 kHz）。角度读取为 DMA 非阻塞：周期任务调
   `AS5600_UpdateStart()` 发起，解算与发布在 `AS5600_OnRxComplete()` 里完成，
   由 `HAL_I2C_MemRxCpltCallback`（实现在 `main.c`）转发；错误走 `AS5600_OnRxError()`。

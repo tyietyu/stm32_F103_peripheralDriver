@@ -184,8 +184,20 @@ void FocApp_HwStart(void)
     (void)HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
     /* CH4 未分配引脚，只用 OC4REF 经 TRGO 触发 ADC 注入组 */
     (void)HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+    /*
+     * 重启路径（CO=2）上通道状态已是 BUSY，HAL_TIM_PWM_Start 直接返回 HAL_ERROR，
+     * 不会重新置 MOE；而本函数开头的 FocApp_Shutdown() 已撤掉 MOE。CCER 与计数器
+     * 仍在运行，只需显式恢复 MOE。首次上电时本行等效空操作。
+     */
+    __HAL_TIM_MOE_ENABLE(&htim1);
 
     (void)HAL_ADCEx_InjectedStart_IT(&hadc1);
+    /*
+     * 返回后库几微秒内就进 Offset_CurrentRead()，而首次注入触发最迟要 66.7 us。
+     * 不等待则第一个采样读到 FocApp_Init() 置的 0，24 点平均被拉低约 85 LSB
+     * （≈0.69 A 的假电流零偏）。等 1~2 ms 让 s_adc_raw 先刷新十几组有效数据。
+     */
+    HAL_Delay(1U);
 }
 
 void FocApp_Shutdown(void)
