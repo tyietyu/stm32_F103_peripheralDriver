@@ -22,9 +22,9 @@
 "as5600\stm32f1xx_hal_uart.o"
 "as5600\system_stm32f1xx.o"
 "as5600\as5600_driver.o"
-"as5600\delay.o"
 "as5600\as5600_app.o"
 "as5600\hal_iic.o"
+"as5600\sys_udelay.o"
 --library_type=microlib --strict --scatter "AS5600\AS5600.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers

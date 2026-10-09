@@ -1,11 +1,22 @@
 #include "AS5600_app.h"
+#include "usart.h"
 #include <stdarg.h>
 #include <stdio.h>
-#include <math.h>
 
-extern UART_HandleTypeDef huart5;
+#define AS5600_FILTER_ALPHA_MIN         0.16f   //低速跟随系数，兼顾慢速连续性和静止稳定性
+#define AS5600_FILTER_ALPHA_MAX         0.65f   //快速变化跟随系数，数值越大响应越快但滤波越弱
+#define AS5600_FILTER_DELTA_LOW_DEG     0.35f   //低速跟随阈值，单位：度
+#define AS5600_FILTER_DELTA_HIGH_DEG    3.00f   //快速跟随阈值，单位：度
+#define AS5600_STATIC_NOISE_DEG         0.20f   //静止噪声窗口，约等于 2 个 AS5600 LSB
+#define AS5600_MOTION_START_DEG         0.25f   //连续低速运动累计到该阈值后退出静止保持
+#define AS5600_ANGLE_FULL_SCALE_DEG     360.0f
+#define AS5600_ANGLE_HALF_SCALE_DEG     180.0f
 
-// �豸1�Ļص�
+static float g_as5600_filtered_angle[AS5600_DEVICE_COUNT] = {0.0f};
+static float g_as5600_last_raw_angle[AS5600_DEVICE_COUNT] = {0.0f};
+static float g_as5600_motion_accum[AS5600_DEVICE_COUNT] = {0.0f};
+static uint8_t g_as5600_filter_initialized[AS5600_DEVICE_COUNT] = {0U};
+
 static uint8_t as5600_init_1(void)
 {
     return IICInit(&g_as5600_devices[AS5600_DEVICE_1].iic_bus);
@@ -16,14 +27,15 @@ static uint8_t as5600_deinit_1(void)
 }
 static uint8_t as5600_read_1(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
 { 
-    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_1].iic_bus, addr, reg, data, len); 
+    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_1].iic_bus, addr, reg, len, data); 
 }
 static uint8_t as5600_write_1(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len)
 { 
-    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_1].iic_bus, addr, reg, data, len); 
+    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_1].iic_bus, addr, reg, len, data); 
 }
 
-// �豸2�Ļص�
+/* 单设备配置不编译第二路回调及设备表项，避免数组越界。 */
+#if AS5600_DEVICE_COUNT > 1
 static uint8_t as5600_init_2(void) 
 { 
     return IICInit(&g_as5600_devices[AS5600_DEVICE_2].iic_bus); 
@@ -34,38 +46,21 @@ static uint8_t as5600_deinit_2(void)
 }
 static uint8_t as5600_read_2(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
 { 
-    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_2].iic_bus, addr, reg, data, len); 
+    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_2].iic_bus, addr, reg, len, data); 
 }
 static uint8_t as5600_write_2(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
 { 
-    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_2].iic_bus, addr, reg, data, len); 
+    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_2].iic_bus, addr, reg, len, data); 
 }
-
-// �豸3�Ļص�
-static uint8_t as5600_init_3(void) 
-{ 
-    return IICInit(&g_as5600_devices[AS5600_DEVICE_3].iic_bus); 
-}
-static uint8_t as5600_deinit_3(void) 
-{ 
-    return IICDeinit(&g_as5600_devices[AS5600_DEVICE_3].iic_bus); 
-}
-static uint8_t as5600_read_3(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
-{ 
-    return IIC_Read_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_3].iic_bus, addr, reg, data, len); 
-}
-static uint8_t as5600_write_3(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len) 
-{ 
-    return IIC_Write_Multi_Byte(&g_as5600_devices[AS5600_DEVICE_3].iic_bus, addr, reg, data, len); 
-}
+#endif
 
 as5600_device_t g_as5600_devices[AS5600_DEVICE_COUNT] = {
     [AS5600_DEVICE_1] = {
         .iic_bus = {
-            .IIC_SDA_PORT = GPIOB, 
-            .IIC_SDA_PIN = GPIO_PIN_7, 
-            .IIC_SCL_PORT = GPIOB, 
-            .IIC_SCL_PIN = GPIO_PIN_6,
+            .IIC_SDA_PORT = SDA1_GPIO_Port,
+            .IIC_SDA_PIN = SDA1_Pin,
+            .IIC_SCL_PORT = SCL1_GPIO_Port,
+            .IIC_SCL_PIN = SCL1_Pin,
         },
         .handle = {
             .iic_init = as5600_init_1, 
@@ -75,24 +70,27 @@ as5600_device_t g_as5600_devices[AS5600_DEVICE_COUNT] = {
             .delay_ms = HAL_Delay, 
             .debug_print = as5600_debug_print},
         .angle_data = {
-            .zero_position = 0, 
-            .stop_position = 4095}, 
+            .relative_angle = 0.0f,
+            .angle_flag = 0,
+            .writing_flag = 0
+        },  
         .config ={
             .power_mode            = AS5600_POWER_MODE_NOM,
             .hysteresis            = AS5600_HYSTERESIS_OFF,
-            .output_stage          = AS5600_OUTPUT_STAGE_PWM,
-            .slow_filter           = AS5600_SLOW_FILTER_2X,
-            .fast_filter_threshold = AS5600_FAST_FILTER_THRESHOLD_6LSB,
+            .output_stage          = AS5600_OUTPUT_STAGE_ANALOG_FULL,
+            .slow_filter           = AS5600_SLOW_FILTER_8X,
+            .fast_filter_threshold = AS5600_FAST_FILTER_THRESHOLD_SLOW_FILTER_ONLY,
             .watchdog_enable       = AS5600_BOOL_FALSE,
         },
         .is_initialized = 0
     },
+#if AS5600_DEVICE_COUNT > 1
     [AS5600_DEVICE_2] = {
         .iic_bus = {
-            .IIC_SDA_PORT = GPIOD,
-            .IIC_SDA_PIN = GPIO_PIN_6, 
-            .IIC_SCL_PORT = GPIOD,
-            .IIC_SCL_PIN = GPIO_PIN_5
+            .IIC_SDA_PORT = SDA2_GPIO_Port,
+            .IIC_SDA_PIN = SDA2_Pin,
+            .IIC_SCL_PORT = SCL2_GPIO_Port,
+            .IIC_SCL_PIN = SCL2_Pin
         }, 
         .handle = {
             .iic_init = as5600_init_2,
@@ -102,64 +100,25 @@ as5600_device_t g_as5600_devices[AS5600_DEVICE_COUNT] = {
             .delay_ms = HAL_Delay, 
             .debug_print = as5600_debug_print}, 
         .angle_data = {
-            .zero_position = 0, 
-            .stop_position = 4095}, 
+            .relative_angle = 0.0f,
+            .angle_flag = 0,
+            .writing_flag = 0
+        },  
         .config ={
             .power_mode            = AS5600_POWER_MODE_NOM,
             .hysteresis            = AS5600_HYSTERESIS_OFF,
-            .output_stage          = AS5600_OUTPUT_STAGE_PWM,
-            .slow_filter           = AS5600_SLOW_FILTER_2X,
-            .fast_filter_threshold = AS5600_FAST_FILTER_THRESHOLD_6LSB,
+            .output_stage          = AS5600_OUTPUT_STAGE_ANALOG_FULL,
+            .slow_filter           = AS5600_SLOW_FILTER_8X,
+            .fast_filter_threshold = AS5600_FAST_FILTER_THRESHOLD_SLOW_FILTER_ONLY,
             .watchdog_enable       = AS5600_BOOL_FALSE,           
         },
         .is_initialized = 0
     },
-    [AS5600_DEVICE_3] = {
-        .iic_bus = {
-            .IIC_SDA_PORT = GPIOC,
-            .IIC_SDA_PIN = GPIO_PIN_11,
-            .IIC_SCL_PORT = GPIOC,
-            .IIC_SCL_PIN = GPIO_PIN_10
-        }, 
-        .handle = {
-            .iic_init = as5600_init_3,
-            .iic_deinit = as5600_deinit_3,
-            .iic_read = as5600_read_3,
-            .iic_write = as5600_write_3, 
-            .delay_ms = HAL_Delay, 
-            .debug_print = as5600_debug_print}, 
-        .angle_data = {
-            .zero_position = 0, 
-            .stop_position = 4095}, 
-        .config ={
-            .power_mode            = AS5600_POWER_MODE_NOM,
-            .hysteresis            = AS5600_HYSTERESIS_OFF,
-            .output_stage          = AS5600_OUTPUT_STAGE_PWM,
-            .slow_filter           = AS5600_SLOW_FILTER_2X,
-            .fast_filter_threshold = AS5600_FAST_FILTER_THRESHOLD_6LSB,
-            .watchdog_enable       = AS5600_BOOL_FALSE,
-        },
-        .is_initialized = 0
-    },
+#endif
 };
-
-static float calculate_relative_angle(float current_angle, uint16_t zero_position)
-{
-    float zero_angle = (float)zero_position * (360.0f / 4096.0f);
-    float relative_angle = current_angle - zero_angle;
-    // ��һ���� [0, 360)
-    relative_angle = fmodf(relative_angle, 360.0f);
-    if (relative_angle < 0.0f)
-    {
-        relative_angle += 360.0f;
-    }
-    return relative_angle;
-}
 
 static uint8_t as5600_configure_device(AS5600_Device_Index_t device_index)
 {
-    if (device_index >= AS5600_DEVICE_COUNT) return 1;
-    
     as5600_device_t *dev = &g_as5600_devices[device_index];
     const as5600_config_t *conf = &dev->config; 
     
@@ -169,101 +128,193 @@ static uint8_t as5600_configure_device(AS5600_Device_Index_t device_index)
     if (as5600_set_slow_filter(&dev->handle, conf->slow_filter) != 0) return 1;
     if (as5600_set_fast_filter_threshold(&dev->handle, conf->fast_filter_threshold) != 0) return 1;
     if (as5600_set_watch_dog(&dev->handle, conf->watchdog_enable) != 0) return 1;
-    
-    // ��ʼ/ֹͣλ����Ȼ�� angle_data �л�ȡ
-    if (as5600_set_start_position(&dev->handle, dev->angle_data.zero_position) != 0) return 1;
-    if (as5600_set_stop_position(&dev->handle, dev->angle_data.stop_position) != 0) return 1;
     return 0; 
+}
+
+static void as5600_reset_angle_filter(AS5600_Device_Index_t device_index)
+{
+    g_as5600_filtered_angle[device_index] = 0.0f;
+    g_as5600_last_raw_angle[device_index] = 0.0f;
+    g_as5600_motion_accum[device_index] = 0.0f;
+    g_as5600_filter_initialized[device_index] = 0U;
+}
+
+static uint8_t as5600_is_magnet_detected(as5600_handle_t *handle)
+{
+    uint8_t status = 0U;
+
+    if (as5600_get_status(handle, &status) != 0)
+    {
+        return 0U;
+    }
+
+    return ((status & AS5600_STATUS_MD) != 0U) ? 1U : 0U;
+}
+
+static float as5600_wrap_angle(float angle)
+{
+    if (angle >= AS5600_ANGLE_FULL_SCALE_DEG)
+    {
+        angle -= AS5600_ANGLE_FULL_SCALE_DEG;
+    }
+    else if (angle < 0.0f)
+    {
+        angle += AS5600_ANGLE_FULL_SCALE_DEG;
+    }
+
+    return angle;
+}
+
+static float as5600_abs_float(float value)
+{
+    if (value < 0.0f)
+    {
+        return -value;
+    }
+
+    return value;
+}
+
+static float as5600_angle_delta(float angle, float reference)
+{
+    float delta = angle - reference;
+
+    if (delta > AS5600_ANGLE_HALF_SCALE_DEG)
+    {
+        delta -= AS5600_ANGLE_FULL_SCALE_DEG;
+    }
+    else if (delta < -AS5600_ANGLE_HALF_SCALE_DEG)
+    {
+        delta += AS5600_ANGLE_FULL_SCALE_DEG;
+    }
+
+    return delta;
+}
+
+static float as5600_get_adaptive_alpha(float angle_delta_abs)
+{
+    float ratio;
+
+    if (angle_delta_abs <= AS5600_FILTER_DELTA_LOW_DEG)
+    {
+        return AS5600_FILTER_ALPHA_MIN;
+    }
+
+    if (angle_delta_abs >= AS5600_FILTER_DELTA_HIGH_DEG)
+    {
+        return AS5600_FILTER_ALPHA_MAX;
+    }
+
+    ratio = (angle_delta_abs - AS5600_FILTER_DELTA_LOW_DEG) /
+            (AS5600_FILTER_DELTA_HIGH_DEG - AS5600_FILTER_DELTA_LOW_DEG);
+
+    return AS5600_FILTER_ALPHA_MIN + ratio * (AS5600_FILTER_ALPHA_MAX - AS5600_FILTER_ALPHA_MIN);
+}
+
+static float as5600_low_pass_filter_angle(AS5600_Device_Index_t device_index, float angle_deg)
+{
+    float *filtered_angle = &g_as5600_filtered_angle[device_index];
+    float raw_delta;
+    float angle_delta;
+    float angle_delta_abs;
+    float raw_delta_abs;
+    float alpha;
+
+    if (g_as5600_filter_initialized[device_index] == 0U)
+    {
+        *filtered_angle = angle_deg;
+        g_as5600_last_raw_angle[device_index] = angle_deg;
+        g_as5600_motion_accum[device_index] = 0.0f;
+        g_as5600_filter_initialized[device_index] = 1U;
+
+        return angle_deg;
+    }
+
+    raw_delta = as5600_angle_delta(angle_deg, g_as5600_last_raw_angle[device_index]);
+    raw_delta_abs = as5600_abs_float(raw_delta);
+    g_as5600_last_raw_angle[device_index] = angle_deg;
+
+    if ((raw_delta * g_as5600_motion_accum[device_index]) < 0.0f)
+    {
+        g_as5600_motion_accum[device_index] = raw_delta;
+    }
+    else
+    {
+        g_as5600_motion_accum[device_index] += raw_delta;
+    }
+
+    if (g_as5600_motion_accum[device_index] > AS5600_MOTION_START_DEG)
+    {
+        g_as5600_motion_accum[device_index] = AS5600_MOTION_START_DEG;
+    }
+    else if (g_as5600_motion_accum[device_index] < -AS5600_MOTION_START_DEG)
+    {
+        g_as5600_motion_accum[device_index] = -AS5600_MOTION_START_DEG;
+    }
+
+    angle_delta = as5600_angle_delta(angle_deg, *filtered_angle);
+    angle_delta_abs = as5600_abs_float(angle_delta);
+
+    if ((raw_delta_abs <= AS5600_STATIC_NOISE_DEG) &&
+        (angle_delta_abs <= AS5600_STATIC_NOISE_DEG))
+    {
+        g_as5600_motion_accum[device_index] = 0.0f;
+        return *filtered_angle;
+    }
+
+    /* 静止时锁住滤波输出；连续同向的小步进累计后再按低速运动跟随。 */
+    if ((raw_delta_abs <= AS5600_STATIC_NOISE_DEG) &&
+        (as5600_abs_float(g_as5600_motion_accum[device_index]) < AS5600_MOTION_START_DEG) &&
+        (angle_delta_abs <= AS5600_MOTION_START_DEG))
+    {
+        return *filtered_angle;
+    }
+
+    alpha = as5600_get_adaptive_alpha(angle_delta_abs);
+    *filtered_angle += alpha * angle_delta;
+    *filtered_angle = as5600_wrap_angle(*filtered_angle);
+
+    return *filtered_angle;
 }
 
 void as5600_update_angle_data(AS5600_Device_Index_t device_index)
 {
-    static uint32_t last_success_times[AS5600_DEVICE_COUNT] = {0};
-    if (device_index >= AS5600_DEVICE_COUNT || !g_as5600_devices[device_index].is_initialized)
-    {
-        return; 
-    }
-    
     as5600_device_t *dev = &g_as5600_devices[device_index];
     AS5600_angle_t *angle_data = &dev->angle_data;
-    
-    uint16_t angle_raw;
+    uint16_t angle_raw = 0U;
     float angle_deg;
-    
+
+    if (as5600_is_magnet_detected(&dev->handle) == 0U)
+    {
+        as5600_reset_angle_filter(device_index);
+        return;
+    }
+
     if (as5600_read(&dev->handle, &angle_raw, &angle_deg) == 0)
     {
-        uint32_t current_time = HAL_GetTick();
-        if (last_success_times[device_index] == 0) {
-            last_success_times[device_index] = current_time;
-            angle_data->current_angle = angle_deg;
-            angle_data->last_angle = angle_deg;
-            return;
-        }
-        
-        float time_diff = (current_time - last_success_times[device_index]) / 1000.0f;
-        if (time_diff < 0.001f) { // ��ֹ��������С��ʱ����
-            return;
-        }
-        
-        angle_data->last_angle = angle_data->current_angle;
-        angle_data->current_angle = angle_deg;
-        
-        float angle_diff = angle_data->current_angle - angle_data->last_angle;
-        if (angle_diff > 180.0f)
-        {
-            angle_diff -= 360.0f;
-            angle_data->total_turns--; // ��ʱ��
-        }
-        else if (angle_diff < -180.0f)
-        {
-            angle_diff += 360.0f;
-            angle_data->total_turns++; // ˳ʱ��
-        }
-        
-        // �����ٶȺ�RPM
-        angle_data->angular_velocity = angle_diff / time_diff;             // ��/��
-        angle_data->rpm = (angle_data->angular_velocity / 360.0f) * 60.0f; // ת/��
-        
-        // ������ԽǶ�
-        angle_data->relative_angle = calculate_relative_angle(angle_data->current_angle,angle_data->zero_position);
-        last_success_times[device_index] = current_time;
+        angle_data->writing_flag = 1;
+        angle_data->relative_angle = as5600_low_pass_filter_angle(device_index, angle_deg);
+        angle_data->writing_flag = 0;
     }
-    else
+    (void)angle_raw;
+}
+
+AS5600_angle_t * ad5600_get_angle(AS5600_Device_Index_t device_index)
+{
+	as5600_device_t * dev = &g_as5600_devices[device_index];
+    AS5600_angle_t * angle_data = &dev->angle_data;
+	return angle_data;
+}
+
+void AS5600_Data_Handler(void)
+{
+    for (int i = 0; i < AS5600_DEVICE_COUNT; i++) 
     {
-        as5600_debug_print("AS5600 Device %d read angle error\r\n", device_index + 1);
-    }
-}
-
-float as5600_get_rpm(AS5600_Device_Index_t device_index)
-{
-    if (device_index >= AS5600_DEVICE_COUNT) return 0;
-    return g_as5600_devices[device_index].angle_data.rpm;
-}
-
-int32_t as5600_get_total_turns(AS5600_Device_Index_t device_index)
-{
-    if (device_index >= AS5600_DEVICE_COUNT) return 0;
-    return g_as5600_devices[device_index].angle_data.total_turns;
-}
-
-float as5600_get_relative_angle(AS5600_Device_Index_t device_index)
-{
-    if (device_index >= AS5600_DEVICE_COUNT) return 0;
-    return g_as5600_devices[device_index].angle_data.relative_angle;
-}
-
-/**
- * @brief timer2�жϻص�����
- * 
- * @param htim 
- */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    if (htim->Instance == TIM2)
-    {
-        for (int i = 0; i < AS5600_DEVICE_COUNT; i++){
-            g_as5600_devices[i].angle_data.angle_flag = 1;
-        }
+      if (g_as5600_devices[i].angle_data.angle_flag)
+      {
+        g_as5600_devices[i].angle_data.angle_flag = 0; 
+        as5600_update_angle_data((AS5600_Device_Index_t) i);
+      }
     }
 }
 
@@ -273,7 +324,6 @@ void as5600_init_all(void)
         if (as5600_init(&g_as5600_devices[i].handle) == 0){
             if (as5600_configure_device((AS5600_Device_Index_t)i) == 0){
                 g_as5600_devices[i].is_initialized = 1;
-                as5600_debug_print("AS5600 Device %d initialized and configured successfully.\r\n", i + 1);
             }else{
                 as5600_debug_print("AS5600 Device %d configuration failed.\r\n", i + 1);
             }

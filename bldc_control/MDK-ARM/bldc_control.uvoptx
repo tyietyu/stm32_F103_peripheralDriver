@@ -125,7 +125,7 @@
         <SetRegEntry>
           <Number>0</Number>
           <Key>DLGTARM</Key>
-          <Name>(1010=-1,-1,-1,-1,0)(1007=-1,-1,-1,-1,0)(1008=-1,-1,-1,-1,0)(1009=1617,232,1875,820,1)(1012=-1,-1,-1,-1,0)</Name>
+          <Name>(1010=-1,-1,-1,-1,0)(1007=-1,-1,-1,-1,0)(1008=-1,-1,-1,-1,0)(1009=1617,232,1875,820,0)(1012=-1,-1,-1,-1,0)</Name>
         </SetRegEntry>
         <SetRegEntry>
           <Number>0</Number>
@@ -159,7 +159,7 @@
           <Type>0</Type>
           <LineNumber>98</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134236252</Address>
+          <Address>134235944</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -169,6 +169,22 @@
           <Filename>../Core/Src/stm32f4xx_it.c</Filename>
           <ExecCommand></ExecCommand>
           <Expression>\\bldc_control\../Core/Src/stm32f4xx_it.c\98</Expression>
+        </Bp>
+        <Bp>
+          <Number>1</Number>
+          <Type>0</Type>
+          <LineNumber>257</LineNumber>
+          <EnabledFlag>1</EnabledFlag>
+          <Address>134219846</Address>
+          <ByteObject>0</ByteObject>
+          <HtxType>0</HtxType>
+          <ManyObjects>0</ManyObjects>
+          <SizeOfObject>0</SizeOfObject>
+          <BreakByAccess>0</BreakByAccess>
+          <BreakIfRCount>1</BreakIfRCount>
+          <Filename>..\BSP_Driver\as5600.c</Filename>
+          <ExecCommand></ExecCommand>
+          <Expression>\\bldc_control\../BSP_Driver/as5600.c\257</Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>

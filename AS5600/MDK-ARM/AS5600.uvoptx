@@ -565,8 +565,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\hardware\delay.c</PathWithFileName>
-      <FilenameWithoutPath>delay.c</FilenameWithoutPath>
+      <PathWithFileName>..\hardware\AS5600_app.c</PathWithFileName>
+      <FilenameWithoutPath>AS5600_app.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -577,8 +577,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\hardware\AS5600_app.c</PathWithFileName>
-      <FilenameWithoutPath>AS5600_app.c</FilenameWithoutPath>
+      <PathWithFileName>..\hardware\hal_iic.c</PathWithFileName>
+      <FilenameWithoutPath>hal_iic.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -589,8 +589,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\hardware\hal_iic.c</PathWithFileName>
-      <FilenameWithoutPath>hal_iic.c</FilenameWithoutPath>
+      <PathWithFileName>..\hardware\sys_udelay.c</PathWithFileName>
+      <FilenameWithoutPath>sys_udelay.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>

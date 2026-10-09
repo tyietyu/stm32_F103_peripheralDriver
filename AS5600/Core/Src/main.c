@@ -90,9 +90,9 @@ int main(void)
   MX_UART5_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-	delay_init();
+  SYS_uDelay_Init();
   as5600_init_all();
-  delay_ms(10);
+  HAL_Delay(10);
   HAL_TIM_Base_Start_IT(&htim2);
 
   /* USER CODE END 2 */
@@ -102,21 +102,13 @@ int main(void)
 
   while (1)
   {
-    for (int i = 0; i < AS5600_DEVICE_COUNT; i++) {
-      if (g_as5600_devices[i].angle_data.angle_flag) {
-          g_as5600_devices[i].angle_data.angle_flag = 0; 
-          as5600_update_angle_data((AS5600_Device_Index_t) i);
-          // »ñÈ¡²¢´òÓ¡Êý¾Ý
-          float rpm = as5600_get_rpm((AS5600_Device_Index_t)i);
-          int32_t turns = as5600_get_total_turns((AS5600_Device_Index_t)i);
-          float angle = as5600_get_relative_angle((AS5600_Device_Index_t)i);
-          
-          // Ê¹ÓÃÍ³Ò»µÄ´òÓ¡º¯Êý
-          as5600_debug_print("Device[%d]: Angle=%.2f, RPM=%.2f, Turns=%ld\r\n", 
-                             i + 1, angle, rpm, turns);
-      }
-  }
-  HAL_Delay(200);
+    AS5600_Data_Handler();
+    // èŽ·å–å¹¶æ‰“å°æ•°æ®
+    uint32_t i=0;
+    AS5600_angle_t angle_data;
+    angle_data = g_as5600_devices[i].angle_data;
+    as5600_debug_print("Device %d: Relative Angle = %.2f degrees\n", i + 1, angle_data.relative_angle);
+    HAL_Delay(200);
   }
   /* USER CODE END 3 */
 }
@@ -160,7 +152,20 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+volatile uint32_t flag_count = 0;
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM2) 
+    {
+        uint32_t i=0;
+        flag_count++;
+        if (flag_count >= 5) 
+        {
+          flag_count = 0;
+          g_as5600_devices[i].angle_data.angle_flag = 1;
+        }
+    }
+}
 /* USER CODE END 4 */
 
 /**

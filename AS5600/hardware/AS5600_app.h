@@ -1,34 +1,25 @@
-#ifndef AS5600_APP_H
-#define AS5600_APP_H
+#ifndef __AS5600_APP_H_
+#define __AS5600_APP_H_
 
 #include "AS5600_driver.h"
 #include "hal_iic.h"
 #include "main.h"
 #include <stdint.h>
 
-#define AS5600_DEVICE_COUNT 3  //AS5600Éè±¸ÊıÁ¿
+#define AS5600_DEVICE_COUNT 1  //AS5600è®¾å¤‡æ•°é‡
 
 typedef enum {
     AS5600_DEVICE_1 = 0,
     AS5600_DEVICE_2 = 1,
-    AS5600_DEVICE_3 = 2,
 } AS5600_Device_Index_t;
 
-#pragma pack(1)
-typedef struct{
-    float current_angle;        //µ±Ç°½Ç¶È
-    float last_angle;           //ÉÏ´Î½Ç¶È
-    float relative_angle;       //Ïà¶Ô½Ç¶È
-    float angular_velocity;     // ½ÇËÙ¶È(¶È/Ãë)
-    float rpm;                  // ×ªËÙ(×ª/·Ö)
-    int32_t total_turns;          //×Ü×ªÊı
-    uint16_t zero_position;     //ÁãÎ»Î»ÖÃ
-    uint16_t stop_position;     //Í£Ö¹Î»ÖÃ
-    uint8_t angle_flag;         //»ñÈ¡½Ç¶È±êÖ¾Î»
+typedef struct as5600_angle{
+    float  relative_angle;          //AS5600å®æ—¶åŸå§‹è§’åº¦æ¢ç®—å€¼ï¼ŒèŒƒå›´[0, 360)
+    volatile uint8_t  angle_flag;   //è·å–è§’åº¦æ ‡å¿—ä½
+    volatile uint8_t  writing_flag; //å†™å…¥æ ‡å¿—ä½
 }AS5600_angle_t;
-#pragma pack()
 
-typedef struct {
+typedef struct as5600_config{
     as5600_power_mode_t             power_mode;
     as5600_hysteresis_t             hysteresis;
     as5600_output_stage_t           output_stage;
@@ -37,7 +28,7 @@ typedef struct {
     as5600_bool_t                   watchdog_enable;
 } as5600_config_t;
 
-typedef struct {
+typedef struct as5600_device{
     as5600_handle_t handle;       
     AS5600_angle_t  angle_data;   
     iic_bus_t       iic_bus;   
@@ -48,43 +39,34 @@ extern as5600_device_t g_as5600_devices[AS5600_DEVICE_COUNT];
 
 /*public app function*/
 /**
- * @brief ³õÊ¼»¯ËùÓĞAS5600Éè±¸
+ * @brief åˆå§‹åŒ–æ‰€æœ‰AS5600è®¾å¤‡
  */
 void as5600_init_all(void);
+
 /**
- * @brief ´ÓÖ¸¶¨µÄAS5600Éè±¸¶ÁÈ¡²¢¼ÆËã½Ç¶È¡¢ËÙ¶ÈµÈĞÅÏ¢
- * @param device_index Éè±¸Ë÷Òı
+ * @brief ä»æŒ‡å®šAS5600è®¾å¤‡è¯»å–RAW_ANGLEå¹¶æ›´æ–°æ»¤æ³¢åçš„å®æ—¶è§’åº¦
+ * @param device_index è®¾å¤‡ç´¢å¼•
  */
 void as5600_update_angle_data(AS5600_Device_Index_t device_index);
-/**
- * @brief »ñÈ¡Ö¸¶¨Éè±¸µÄ×ªËÙ (RPM)
- * @param device_index Éè±¸Ë÷Òı
- * @return float ×ªËÙÖµ
- */
-float as5600_get_rpm(AS5600_Device_Index_t device_index);
-/**
- * @brief »ñÈ¡Ö¸¶¨Éè±¸µÄ×ÜÈ¦Êı
- * @param device_index Éè±¸Ë÷Òı
- * @return int32_t ×ÜÈ¦Êı
- */
-int32_t as5600_get_total_turns(AS5600_Device_Index_t device_index);
-/**
- * @brief »ñÈ¡Ö¸¶¨Éè±¸µÄÏà¶Ô½Ç¶È
- * @param device_index Éè±¸Ë÷Òı
- * @return float Ïà¶Ô½Ç¶ÈÖµ
- */
-float as5600_get_relative_angle(AS5600_Device_Index_t device_index);
 
+/**
+ * @brief AS5600æ•°æ®è°ƒåº¦å¤„ç†å‡½æ•°ï¼Œåœ¨ä¸»å¾ªç¯ä¸­æ ¹æ®angle_flagæ›´æ–°è§’åº¦ç¼“å­˜
+ */
+void AS5600_Data_Handler(void);
+
+/**
+ * @brief è·å–æŒ‡å®šAS5600è®¾å¤‡çš„è§’åº¦æ•°æ®ç¼“å­˜
+ * @param device_index è®¾å¤‡ç´¢å¼•
+ * @return æŒ‡å®šè®¾å¤‡çš„è§’åº¦æ•°æ®æŒ‡é’ˆ
+ */
+AS5600_angle_t * ad5600_get_angle(AS5600_Device_Index_t device_index);
+
+/**
+ * @brief AS5600è°ƒè¯•æ‰“å°æ¥å£
+ * @param fmt printfé£æ ¼æ ¼å¼å­—ç¬¦ä¸²
+ * @param ... å¯å˜å‚æ•°
+ */
 void as5600_debug_print(const char *const fmt, ...);
 
 #endif
-
-
-
-
-
-
-
-
-
 

@@ -31,7 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "delay.h"
+#include "sys_udelay.h"
 #include "tim.h"
 
 /* USER CODE END Includes */
