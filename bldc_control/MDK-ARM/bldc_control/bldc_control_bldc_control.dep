@@ -1,7 +1,7 @@
 Dependencies for Project 'bldc_control', Target 'bldc_control': (DO NOT MODIFY !)
 CompilerVersion: 5060960::V5.06 update 7 (build 960)::.\ARMCC
 F (startup_stm32f407xx.s)(0x6AC9A375)(--cpu Cortex-M4.fp.sp -g --apcs=interwork --pd "__MICROLIB SETA 1"-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"--pd "__UVISION_VERSION SETA 534" --pd "_RTE_ SETA 1" --pd "STM32F407xx SETA 1" --pd "_RTE_ SETA 1"--list startup_stm32f407xx.lst --xref -o bldc_control\startup_stm32f407xx.o --depend bldc_control\startup_stm32f407xx.d)
-F (../Core/Src/foc_app.c)(0x6AC9E8F9)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\foc_app.o --depend bldc_control\foc_app.d)
+F (../Core/Src/foc_app.c)(0x6AC9F2F0)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../BSP_Driver -I ../SguanFOC-I.\RTE\_bldc_control-I"D:\Program Files (x86)\Keil_v5\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include"-I"D:\Program Files (x86)\Keil_v5\Pack\Keil\STM32F4xx_DFP\2.15.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include"-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o bldc_control\foc_app.o --depend bldc_control\foc_app.d)
 I (../Core/Inc/foc_app.h)(0x6AC9AECB)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5E8E3CC2)
 I (../Core/Inc/main.h)(0x6A868A3C)
@@ -1570,7 +1570,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x656ECCCC)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x656ECCCC)
 I (..\SguanFOC\UserData_Motor.h)(0x6AB4BF8E)
 I (../BSP_Driver/drv8301.h)(0x6A857F60)
-I (..\SguanFOC\UserData_Parameter.h)(0x6A86CE64)
+I (..\SguanFOC\UserData_Parameter.h)(0x6AC9F294)
 I (..\SguanFOC\UserData_UserControl.h)(0x6AC9AA63)
 I (../BSP_Driver/log.h)(0x6954CE2D)
 I (D:\Program Files (x86)\Keil_v5\ARM\ARMCC\include\stdarg.h)(0x5E8E3CC2)

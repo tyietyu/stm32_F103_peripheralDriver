@@ -61,7 +61,7 @@
  * 上位机协议已关闭，改这里即改转速；volatile 便于在调试器里在线改值，
  * 每个 15 kHz 周期由 FocApp_ApplyTargets() 限幅后落库。10 rad/s ≈ 95 rpm。
  */
-volatile float FocApp_SpeedCmd_RadS = 10.0F;
+volatile float FocApp_SpeedCmd_RadS = 100.0F;
 
 typedef struct
 {
