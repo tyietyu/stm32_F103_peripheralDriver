@@ -31,6 +31,7 @@
 #include "delay.h"
 #include "drv8301.h"
 #include "foc_app.h"
+#include "log.h"
 #include "SguanFOC.h"
 
 /* USER CODE END Includes */
@@ -103,6 +104,15 @@ int main(void)
   MX_SPI2_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+  /*
+   * 排查日志挂 USART1（115200-8N1，PA9/PA10），必须在 MX_USART1_UART_Init() 之后、
+   * 任何 CAW_LOG_* 之前初始化；CAW_LOG_Write() 不判空，未初始化就调用会卡死在等待 READY。
+   * 发送是阻塞的（约 10 ms/行），只能在 while(1) 上下文调用，严禁进 ADC/TIM2 中断。
+   * 日志格式串一律 ASCII：armcc(AC5) 按系统代码页解码源码，UTF-8 中文会吞掉后续引号。
+   */
+  CAW_LOG_Init(&huart1, LEVEL_DEBUG, false);
+  CAW_LOG_INFO("==== BLDC boot: peripherals ready, HCLK=%lu Hz ====",
+               (unsigned long)HAL_RCC_GetHCLKFreq());
   /* AS5600 写 CONF 后的建立等待用 delay_us()，必须早于 FocApp_Init() */
   delay_init();
   /*
@@ -111,6 +121,8 @@ int main(void)
    * User_InitialInit() -> FocApp_HwStart() 里完成，那里允许阻塞等待。
    */
   FocApp_Init();
+  CAW_LOG_INFO("FocApp_Init done: mode=%u status=%u speed_cmd=%.1f rad/s, enter main loop",
+               (unsigned)Sguan.mode, (unsigned)Sguan.status, (double)FocApp_SpeedCmd_RadS);
   /* USER CODE END 2 */
 
   /* Infinite loop */

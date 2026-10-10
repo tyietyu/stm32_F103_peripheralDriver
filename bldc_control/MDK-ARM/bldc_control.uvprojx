@@ -890,6 +890,11 @@
               <FilePath>..\BSP_Driver\as5600.c</FilePath>
             </File>
             <File>
+              <FileName>AS5600_driver.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP_Driver\AS5600_driver.c</FilePath>
+            </File>
+            <File>
               <FileName>delay.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BSP_Driver\delay.c</FilePath>

@@ -46,7 +46,19 @@
       "Read(//c/Keil_v5/ARM/ARMCLANG/bin/**)",
       "Bash(awk '/^static void Status_Switch_Loop\\\\\\(/,/^}/' SguanFOC/SguanFOC.c)",
       "Bash(grep -n \"编码器刷新必须在中断里\\\\|AS5600_UpdateStart\\\\|与 DMA 读互斥\\\\|按库注释示例接上位机调参\\\\|一行转发到\\\\`FocApp_Send\\\\|### 5.4 上位机波形通道\\\\|沿用 \\\\`UserData_UserControl.h:69-80\\\\`\" \"基于SguanFOC的BLDC电流环、速度环、位置环控制.md\")",
-      "Bash(grep -v \"^\\\\\\([-+]\\\\\\) *\\\\\\(\\\\*\\\\|/\\\\*\\\\|\\\\*/\\\\\\)\")"
+      "Bash(grep -v \"^\\\\\\([-+]\\\\\\) *\\\\\\(\\\\*\\\\|/\\\\*\\\\|\\\\*/\\\\\\)\")",
+      "Bash(which armclang *)",
+      "Read(//c/Keil_v5/ARM/ARMCLANG/**)",
+      "Read(//c/Program Files/**)",
+      "Read(//c//**)",
+      "Bash(grep -vE \"^\\\\+\\\\s*\\(/\\\\*|\\\\*|//\\)\")",
+      "Bash(python -I -)",
+      "Read(//c/Keil_v5/UV4/**)",
+      "Bash(cd \"e:/0001_LCWork/project_STM32/stm32_F103_peripheralDriver/bldc_control\" && ls -la \"E:/0001_LCWork/datasheet/as5600.pdf\" 2>/dev/null; which pdftotext mutool 2>/dev/null; echo \"---\")",
+      "Read(//e/0001_LCWork/datasheet/**)",
+      "Bash(cd /tmp)",
+      "Bash(pdftotext -layout \"E:/0001_LCWork/datasheet/as5600.pdf\" as5600.txt)",
+      "Bash(python -c ' *)"
     ]
   }
 }

@@ -35,6 +35,7 @@
 "bldc_control\stm32f4xx_hal_uart.o"
 "bldc_control\system_stm32f4xx.o"
 "bldc_control\as5600.o"
+"bldc_control\as5600_driver.o"
 "bldc_control\delay.o"
 "bldc_control\log.o"
 "bldc_control\drv8301.o"

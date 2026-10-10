@@ -213,7 +213,7 @@ DRV8301_Result_t DRV8301_Init(SPI_HandleTypeDef *hspi)
     DRV8301_EN_GATE_HIGH();
 
     /* Datasheet tSPI_READY is 5 ms typical and 10 ms maximum. */
-    HAL_Delay(10U);
+    HAL_Delay(5U);
 
     result = DRV8301_ReadReg(DRV8301_REG_STATUS2, &status2);
     if (result != DRV8301_OK)

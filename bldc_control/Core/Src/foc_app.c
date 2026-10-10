@@ -10,6 +10,8 @@
   *
   * 上位机 JustFloat 协议已关闭：USART1 不挂接收，User_CorrespondSet() 为空实现，
   * 速度给定直接来自本文件的 FocApp_SpeedCmd_RadS。
+  * USART1 现用于 CAW_LOG 排查日志（BSP_Driver/log.c，阻塞发送），日志只允许在
+  * while(1) 上下文调用：启动序列、状态机跳变、10 Hz 诊断与 500 ms 遥测。
   *
   * 中断入口沿用 HAL 的弱回调（HAL_ADCEx_InjectedConvCpltCallback /
   * HAL_TIM_PeriodElapsedCallback），stm32f4xx_it.c
@@ -26,12 +28,15 @@
 
 #include "as5600.h"
 #include "drv8301.h"
+#include "log.h"
 #include "SguanFOC.h"
 
 /* TIM2 4 kHz 分频到 SguanFOC_Low_Loop() 的 1 kHz */
 #define FOC_LOW_LOOP_DIV            4U
 /* while(1) 里 DRV8301 / AS5600 状态轮询周期 */
 #define FOC_DIAG_PERIOD_MS          100U
+/* 每 N 个诊断周期打一组遥测日志（5 -> 500 ms），日志是阻塞串口，不能更密 */
+#define FOC_LOG_TELEMETRY_DIV       5U
 /* 角度数据允许的最大陈旧时间：1 kHz 刷新下正常不超过 1 ms */
 #define FOC_ENCODER_MAX_AGE_MS      5U
 /*
@@ -81,9 +86,27 @@ static uint8_t  s_stale_count;
 static volatile uint8_t s_i2c_blocking;
 static uint32_t s_diag_tick;
 
+/*
+ * 排查日志用的状态缓存。日志走阻塞串口（一行约 10 ms），只能放在 while(1) 上下文，
+ * 且周期性读数只在变化时打印，避免 10 Hz 轮询刷屏。初值取不可能出现的值，
+ * 保证上电后第一次读到的状态必定打印一次。
+ */
+static volatile uint32_t s_high_loop_count;     /* 15 kHz 高频环存活计数，ADC 中断内自增 */
+static uint32_t s_log_high_loop_last;
+static uint16_t s_log_drv_status1 = 0xFFFFU;
+static uint16_t s_log_drv_status2 = 0xFFFFU;
+static uint8_t  s_log_drv_ok = 1U;
+static uint8_t  s_log_enc_state = 0xFFU;        /* 0 正常 / 1 读失败 */
+static uint8_t  s_log_status_group = 0xFFU;
+static uint8_t  s_log_status_last = 0xFFU;
+static uint8_t  s_log_div;
+
 static float FocApp_Clamp(float value, float limit);
 static void  FocApp_CheckEncoderFresh(void);
 static void  FocApp_ApplyModeRequest(void);
+static const char *FocApp_StatusName(uint8_t status);
+static void  FocApp_LogStatusChange(void);
+static void  FocApp_LogTelemetry(void);
 
 /* ================= 生命周期 ================= */
 
@@ -127,6 +150,14 @@ void FocApp_Init(void)
  */
 void FocApp_HwStart(void)
 {
+    DRV8301_Result_t drv_result;
+    uint16_t drv_status1 = 0U;
+    uint16_t drv_status2 = 0U;
+    int encoder_result;
+
+    /* 日志格式串只用 ASCII：armcc(AC5) 按系统代码页解码源码，UTF-8 中文会吞掉后续引号 */
+    CAW_LOG_INFO("HwStart: begin (DRV8301 -> AS5600 -> TIM2 -> TIM1/ADC)");
+
     /*
      * 重启路径（CO=2）进来时 CCR 还冻结在上一帧的电压矢量上，而 status<4 期间
      * 库不再更新 CCR，DRV8301_Init() 又要阻塞 10 ms，之后 Offset_CurrentRead()
@@ -149,24 +180,51 @@ void FocApp_HwStart(void)
     Sguan.current.Pos_offset0 = 0;
     Sguan.current.Pos_offset1 = 0;
 
-    if (DRV8301_Init(&hspi2) != DRV8301_OK)
+    drv_result = DRV8301_Init(&hspi2);
+    if (drv_result != DRV8301_OK)
     {
         /* 配置未落地时器件可能停在默认 6PWM 模式，必须立刻硬关断 */
         DRV8301_Shutdown();
         s_signal[FOC_SIGNAL_SENSOR_ERROR] = 1U;
+        /* -2 SPI 超时 / -3 帧错误 / -4 地址不符 / -5 回读不符 / -6 FAULT 未清，见 drv8301.h */
+        CAW_LOG_ERROR("DRV8301_Init FAILED ret=%d, EN_GATE pulled low", (int)drv_result);
+    }
+    else if (DRV8301_ReadStatus(&drv_status1, &drv_status2) == DRV8301_OK)
+    {
+        CAW_LOG_INFO("DRV8301 configured STATUS1=0x%04X STATUS2=0x%04X DEV_ID=%u",
+                     (unsigned)drv_status1, (unsigned)drv_status2,
+                     (unsigned)(drv_status2 & DRV8301_SR2_DEVICE_ID_Msk));
+    }
+    else
+    {
+        CAW_LOG_WARN("DRV8301 configured but status readback FAILED");
     }
 
-    if (AS5600_Init(&g_encoder, &hi2c1) != 0)
+    encoder_result = AS5600_Init(&g_encoder, &hi2c1);
+    if (encoder_result != 0)
     {
         s_signal[FOC_SIGNAL_ENCODER_ERROR] = 1U;
+        /* 具体失败点（STATUS 读失败 / 磁体不合法 / CONF 回读 / RAW_ANGLE）由 as5600.c 内部打点。
+           空闲总线 SCL(PB6)/SDA(PB7) 都应读到 1：读到 0 说明无上拉、线被拉死或从机卡住 */
+        CAW_LOG_ERROR("AS5600_Init FAILED ret=%d, I2C1 idle level SCL=%u SDA=%u (both must be 1)",
+                      encoder_result,
+                      (unsigned)HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6),
+                      (unsigned)HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7));
+    }
+    else
+    {
+        CAW_LOG_INFO("AS5600 ready, angle=%.4f rad raw=%u",
+                     (double)g_encoder.mechanical_angle, (unsigned)g_encoder.raw_angle);
     }
     s_i2c_blocking = 0U;
 
     /* 低频状态机挂在 TIM2 上，故障态也要靠它锁定，必须无条件启动 */
     (void)HAL_TIM_Base_Start_IT(&htim2);
+    CAW_LOG_INFO("TIM2 started (1 kHz state machine + AS5600 poll)");
 
     if (s_signal[FOC_SIGNAL_SENSOR_ERROR] != 0U)
     {
+        CAW_LOG_ERROR("gate driver not ready, PWM/ADC NOT started, waiting for SENSOR_ERROR");
         return; /* 栅极驱动器未就绪，不开 PWM 与 ADC，等状态机进 SENSOR_ERROR */
     }
 
@@ -193,6 +251,10 @@ void FocApp_HwStart(void)
      * （≈0.69 A 的假电流零偏）。等 1~2 ms 让 s_adc_raw 先刷新十几组有效数据。
      */
     HAL_Delay(1U);
+    /* 零矢量下三路都应接近 2048(REF/2)；全 0 说明 TIM1 TRGO -> ADC 注入触发链没通 */
+    CAW_LOG_INFO("TIM1 PWM + ADC injected started, first raw=%ld/%ld/%ld hi=%lu",
+                 (long)s_adc_raw[0], (long)s_adc_raw[1], (long)s_adc_raw[2],
+                 (unsigned long)s_high_loop_count);
 }
 
 void FocApp_Shutdown(void)
@@ -213,6 +275,11 @@ void FocApp_DiagnoseLoop(void)
     uint32_t now = HAL_GetTick();
     uint16_t status1 = 0U;
     uint16_t status2 = 0U;
+    int encoder_result;
+    uint8_t enc_state;
+
+    /* 状态机跳变不走 100 ms 节拍，主循环每次经过都比对一次，少漏过渡态 */
+    FocApp_LogStatusChange();
 
     if ((uint32_t)(now - s_diag_tick) < FOC_DIAG_PERIOD_MS)
     {
@@ -223,22 +290,58 @@ void FocApp_DiagnoseLoop(void)
     /* 本板 nFAULT/nOCTW 未接 MCU，DRV8301 的故障只能靠 SPI 轮询发现 */
     if (DRV8301_ReadStatus(&status1, &status2) == DRV8301_OK)
     {
+        s_log_drv_ok = 1U;
+        if ((status1 != s_log_drv_status1) || (status2 != s_log_drv_status2))
+        {
+            s_log_drv_status1 = status1;
+            s_log_drv_status2 = status2;
+            /* OC 位：bit5..0 = HA/LA/HB/LB/HC/LC，OC 锁存关断后这里会非零且 FAULT=1 */
+            CAW_LOG_INFO("DRV8301 STATUS1=0x%04X STATUS2=0x%04X FAULT=%u OC=0x%02X GVDD_UV=%u PVDD_UV=%u OTSD=%u",
+                         (unsigned)status1, (unsigned)status2,
+                         (unsigned)((status1 & DRV8301_SR1_FAULT) != 0U),
+                         (unsigned)(status1 & 0x3FU),
+                         (unsigned)((status1 & DRV8301_SR1_GVDD_UV) != 0U),
+                         (unsigned)((status1 & DRV8301_SR1_PVDD_UV) != 0U),
+                         (unsigned)((status1 & DRV8301_SR1_OTSD) != 0U));
+        }
         if ((status1 & DRV8301_SR1_FAULT) != 0U)
         {
             s_signal[FOC_SIGNAL_SENSOR_ERROR] = 1U;
         }
     }
-
-    /*
-     * 磁体掉落后器件仍返回语法合法的角度，只读 RAW_ANGLE 发现不了。
-     * 这里是阻塞 I2C，与 TIM2 发起的轮询读不能在同一总线上重入。
-     */
-    s_i2c_blocking = 1U;
-    if (AS5600_CheckStatus(&g_encoder) == -1) /* -2 是读失败，下个周期重试 */
+    else if (s_log_drv_ok != 0U)
     {
-        s_signal[FOC_SIGNAL_ENCODER_ERROR] = 1U;
+        /* EN_GATE 为低时器件休眠、SPI 不响应，关断后这里失败是预期现象 */
+        s_log_drv_ok = 0U;
+        CAW_LOG_WARN("DRV8301 status read FAILED (expected if EN_GATE is low)");
     }
+
+    /* 这里是阻塞 I2C，与 TIM2 发起的轮询读不能在同一总线上重入。
+       磁体检测判定已取消，CheckStatus 只返回 0 读取正常 / -2 读失败，不再触发 ENCODER_ERROR */
+    s_i2c_blocking = 1U;
+    encoder_result = AS5600_CheckStatus(&g_encoder); /* -2 是读失败，下个周期重试 */
     s_i2c_blocking = 0U;
+
+    enc_state = (encoder_result == 0) ? 0U : 1U;
+    if (enc_state != s_log_enc_state)
+    {
+        s_log_enc_state = enc_state;
+        if (enc_state == 1U)
+        {
+            CAW_LOG_WARN("AS5600 STATUS register I2C read FAILED");
+        }
+        else
+        {
+            CAW_LOG_INFO("AS5600 STATUS read OK (magnet check disabled)");
+        }
+    }
+
+    s_log_div++;
+    if (s_log_div >= FOC_LOG_TELEMETRY_DIV)
+    {
+        s_log_div = 0U;
+        FocApp_LogTelemetry();
+    }
 }
 
 /* ================= 供 UserData_*.h 转发的原语 ================= */
@@ -458,6 +561,88 @@ static void FocApp_CheckEncoderFresh(void)
     }
 }
 
+/* ================= 排查日志（只在 while(1) 上下文调用，串口阻塞） ================= */
+
+/* 状态机编号 -> 短名，完整定义见 Sguan_MotorStatus.h。0x05~0x0D 统称 RUN */
+static const char *FocApp_StatusName(uint8_t status)
+{
+    switch (status)
+    {
+    case MOTOR_STATUS_STANDBY:          return "STANDBY";
+    case MOTOR_STATUS_UNINITIALIZED:    return "UNINIT";
+    case MOTOR_STATUS_INITIALIZING:     return "INIT";
+    case MOTOR_STATUS_CALIBRATING:      return "CALIB";
+    case MOTOR_STATUS_IDLE:             return "IDLE";
+    case MOTOR_STATUS_OVERVOLTAGE:      return "OVERVOLT";
+    case MOTOR_STATUS_UNDERVOLTAGE:     return "UNDERVOLT";
+    case MOTOR_STATUS_OVERTEMPERATURE:  return "OVERTEMP";
+    case MOTOR_STATUS_UNDERTEMPERATURE: return "UNDERTEMP";
+    case MOTOR_STATUS_OVERCURRENT:      return "OVERCURRENT";
+    case MOTOR_STATUS_ENCODER_ERROR:    return "ENCODER_ERR";
+    case MOTOR_STATUS_SENSOR_ERROR:     return "SENSOR_ERR";
+    case MOTOR_STATUS_PWM_CALC_FAULT:   return "PWM_FAULT";
+    case MOTOR_STATUS_EMERGENCY_STOP:   return "ESTOP";
+    case MOTOR_STATUS_DISABLED:         return "DISABLED";
+    default:
+        return (status <= MOTOR_STATUS_POSITION_HOLD) ? "RUN" : "UNKNOWN";
+    }
+}
+
+/*
+ * 状态机跳变日志。运行态（加/减速、位置增/减等 0x05~0x0D）在库的
+ * Status_Switch_Loop 里逐拍互相覆盖，归为一组避免刷屏；其余状态逐个打印。
+ */
+static void FocApp_LogStatusChange(void)
+{
+    uint8_t status = Sguan.status;
+    uint8_t group = ((status >= MOTOR_STATUS_TORQUE_INCREASING) &&
+                     (status <= MOTOR_STATUS_POSITION_HOLD)) ? MOTOR_STATUS_TORQUE_INCREASING : status;
+
+    if (group != s_log_status_group)
+    {
+        if (s_log_status_group == 0xFFU)
+        {
+            CAW_LOG_INFO("status init %u(%s) mode=%u",
+                         (unsigned)status, FocApp_StatusName(status), (unsigned)Sguan.mode);
+        }
+        else
+        {
+            CAW_LOG_INFO("status %u(%s) -> %u(%s) mode=%u",
+                         (unsigned)s_log_status_last, FocApp_StatusName(s_log_status_last),
+                         (unsigned)status, FocApp_StatusName(status), (unsigned)Sguan.mode);
+        }
+        s_log_status_group = group;
+    }
+    s_log_status_last = status;
+}
+
+/*
+ * 500 ms 一组遥测。判读要点：
+ *   hi      两次遥测间 15 kHz 高频环的执行次数，正常约 7500，为 0 说明 ADC 中断停了
+ *   Ud/Uq   出现 nan 说明控制器被 NaN 污染（如 FW_MTPA 对 Ld==Lq 除零）
+ *   duty    三路都是 0 等于三相下管全开（刹车短路），电机被锁死且无电流
+ *   raw     零矢量下约 2048，不随电流变化说明 ADC 采样链没通
+ */
+static void FocApp_LogTelemetry(void)
+{
+    uint32_t high_loop_delta = s_high_loop_count - s_log_high_loop_last;
+    s_log_high_loop_last = s_high_loop_count;
+
+    CAW_LOG_INFO("TLM st=%u(%s) mode=%u ts=%.1f rs=%.1f rad=%.3f eoff=%.3f",
+                 (unsigned)Sguan.status, FocApp_StatusName(Sguan.status), (unsigned)Sguan.mode,
+                 (double)Sguan.foc.Target_Speed, (double)Sguan.encoder.Real_Speed,
+                 (double)Sguan.encoder.Real_Rad, (double)Sguan.encoder.Pos_offset);
+    CAW_LOG_INFO("TLM Ia=%.3f Ib=%.3f Id=%.3f Iq=%.3f Tid=%.3f vout=%.3f",
+                 (double)Sguan.current.Real_Ia, (double)Sguan.current.Real_Ib,
+                 (double)Sguan.current.Real_Id, (double)Sguan.current.Real_Iq,
+                 (double)Sguan.foc.Target_Id, (double)Sguan.control.Velocity.run.Output);
+    CAW_LOG_INFO("TLM Ud=%.2f Uq=%.2f duty=%u/%u/%u raw=%ld/%ld hi=%lu pwm_busy=%u",
+                 (double)Sguan.foc.Ud_in, (double)Sguan.foc.Uq_in,
+                 (unsigned)Sguan.foc.Duty_u, (unsigned)Sguan.foc.Duty_v, (unsigned)Sguan.foc.Duty_w,
+                 (long)s_adc_raw[0], (long)s_adc_raw[1],
+                 (unsigned long)high_loop_delta, (unsigned)Sguan.flag.PWM_Calc);
+}
+
 /* ================= HAL 中断回调（弱符号覆盖） ================= */
 
 /* ADC 注入组转换完成，15 kHz。整条控制链路的时基 */
@@ -472,6 +657,8 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
     s_adc_raw[0] = (int32_t)hadc->Instance->JDR1;
     s_adc_raw[1] = (int32_t)hadc->Instance->JDR2;
     s_adc_raw[2] = (int32_t)hadc->Instance->JDR3;
+    /* 只做存活计数供遥测日志判断高频环是否还在跑，中断内不能打日志 */
+    s_high_loop_count++;
 
     SguanFOC_High_Loop();
 }

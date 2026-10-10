@@ -1,78 +1,86 @@
 #include "as5600.h"
+#include "AS5600_driver.h"
 #include <math.h>
 #include <stddef.h>
+#include <string.h>
 #include "delay.h"
+/* 排查打点：只在 Init / CheckStatus / WriteRegisterVerified（均为 while(1) 上下文）里打，
+   AS5600_Update() 跑在 TIM2 中断内，禁止在它及其调用的函数里打日志。格式串只用 ASCII */
+#include "log.h"
 
 #define AS5600_TWO_PI          6.283185307179586f
 #define AS5600_MAX_ERROR_COUNT 0xFFFFU
 
-static int AS5600_ReadRegister(AS5600_T *sensor, uint8_t reg, uint8_t *value)
-{
-  if ((sensor == NULL) || (sensor->hi2c == NULL) || (value == NULL))
-  {
-    return -1;
-  }
+/*
+ * 官方 LibDriver 句柄（本板只有一颗 AS5600，用文件级静态实例）。
+ * 驱动的 iic_read/write 回调签名不含用户上下文，只能经静态变量 s_hi2c 取回 I2C 外设。
+ */
+static as5600_handle_t s_handle;
+static I2C_HandleTypeDef *s_hi2c;
 
-  return (HAL_I2C_Mem_Read(sensor->hi2c, AS5600_I2C_ADDR, reg,
-                           I2C_MEMADD_SIZE_8BIT, value, 1U,
-                           AS5600_I2C_TIMEOUT_MS) == HAL_OK) ? 0 : -1;
+/* I2C1 已由 MX_I2C1_Init() 配置，驱动的 iic_init/iic_deinit 只需返回成功 */
+static uint8_t AS5600_IicInit(void)
+{
+  return 0;
+}
+
+static uint8_t AS5600_IicDeinit(void)
+{
+  return 0;
+}
+
+/* 驱动传入 7 位从机地址（AS5600_ADDRESS=0x36），HAL 的 I2C API 需要含读写位的 8 位地址 */
+static uint8_t AS5600_IicRead(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
+{
+  return (HAL_I2C_Mem_Read(s_hi2c, (uint16_t)((uint16_t)addr << 1U), reg,
+                           I2C_MEMADD_SIZE_8BIT, buf, len,
+                           AS5600_I2C_TIMEOUT_MS) == HAL_OK) ? 0U : 1U;
+}
+
+static uint8_t AS5600_IicWrite(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
+{
+  return (HAL_I2C_Mem_Write(s_hi2c, (uint16_t)((uint16_t)addr << 1U), reg,
+                            I2C_MEMADD_SIZE_8BIT, buf, len,
+                            AS5600_I2C_TIMEOUT_MS) == HAL_OK) ? 0U : 1U;
+}
+
+static void AS5600_DelayMs(uint32_t ms)
+{
+  delay_ms(ms);
+}
+
+/*
+ * 驱动在读写失败路径会回调 debug_print，而角度读路径运行在 TIM2 中断内。
+ * 这里必须保持空实现：在中断里做阻塞串口打印会拖垮实时性，失败由应用层返回值判定。
+ */
+static void AS5600_DebugPrint(const char *const fmt, ...)
+{
+  (void)fmt;
 }
 
 /* CONF 为易失寄存器，每次上电写入，不使用 BURN_SETTING，不消耗 ZMCO 次数 */
-static int AS5600_WriteRegisterVerified(AS5600_T *sensor, uint8_t reg,
-                                        uint8_t value, uint8_t mask)
+static int AS5600_WriteRegisterVerified(uint8_t reg, uint8_t value, uint8_t mask)
 {
   uint8_t readback = 0U;
 
-  if (HAL_I2C_Mem_Write(sensor->hi2c, AS5600_I2C_ADDR, reg,
-                        I2C_MEMADD_SIZE_8BIT, &value, 1U,
-                        AS5600_I2C_TIMEOUT_MS) != HAL_OK)
+  if (as5600_set_reg(&s_handle, reg, &value, 1U) != 0)
   {
     return -1;
   }
 
   delay_us(500U);
-  if (AS5600_ReadRegister(sensor, reg, &readback) != 0)
+  if (as5600_get_reg(&s_handle, reg, &readback, 1U) != 0)
   {
     return -1;
   }
 
-  return ((readback & mask) == (value & mask)) ? 0 : -1;
-}
-
-/* 磁体状态判定：MD 必须置位，ML/MH 必须清零 */
-static int AS5600_ValidateStatus(uint8_t status)
-{
-  if ((status & AS5600_STATUS_MAGNET_DETECT) == 0U)
+  if ((readback & mask) != (value & mask))
   {
+    /* 写入成功但回读不符：多半是总线边沿质量差导致位错，或器件未按预期接受该位 */
+    CAW_LOG_ERROR("AS5600 reg 0x%02X verify mismatch: wrote 0x%02X read 0x%02X mask 0x%02X",
+                  (unsigned)reg, (unsigned)value, (unsigned)readback, (unsigned)mask);
     return -1;
   }
-  if ((status & (AS5600_STATUS_MAGNET_WEAK | AS5600_STATUS_MAGNET_STRONG)) != 0U)
-  {
-    return -1;
-  }
-
-  return 0;
-}
-
-/* 阻塞式读取原始角度，Init 取首个基准角度与运行期轮询共用 */
-static int AS5600_ReadRawAngle(AS5600_T *sensor, uint16_t *raw_angle)
-{
-  uint8_t buffer[2] = {0U};
-
-  if ((sensor == NULL) || (sensor->hi2c == NULL) || (raw_angle == NULL))
-  {
-    return -1;
-  }
-
-  if (HAL_I2C_Mem_Read(sensor->hi2c, AS5600_I2C_ADDR, AS5600_RAW_ANGLE_REGISTER,
-                       I2C_MEMADD_SIZE_8BIT, buffer, 2U,
-                       AS5600_I2C_TIMEOUT_MS) != HAL_OK)
-  {
-    return -1;
-  }
-
-  *raw_angle = (((uint16_t)buffer[0] << 8) | (uint16_t)buffer[1]) & AS5600_RAW_MASK;
   return 0;
 }
 
@@ -125,31 +133,68 @@ int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c)
   sensor->last_success_tick = 0U;
   sensor->error_count = 0U;
   sensor->step_reject_count = 0U;
-  sensor->magnet_detected = false;
   sensor->valid = false;
 
-  if ((AS5600_ReadRegister(sensor, AS5600_STATUS_REGISTER, &status) != 0) ||
-      (AS5600_ValidateStatus(status) != 0))
+  /* 绑定官方驱动句柄与 I2C 回调，再交给驱动做初始化（校验回调并置 inited 标志） */
+  s_hi2c = hi2c;
+  DRIVER_AS5600_LINK_INIT(&s_handle, as5600_handle_t);
+  DRIVER_AS5600_LINK_IIC_INIT(&s_handle, AS5600_IicInit);
+  DRIVER_AS5600_LINK_IIC_DEINIT(&s_handle, AS5600_IicDeinit);
+  DRIVER_AS5600_LINK_IIC_READ(&s_handle, AS5600_IicRead);
+  DRIVER_AS5600_LINK_IIC_WRITE(&s_handle, AS5600_IicWrite);
+  DRIVER_AS5600_LINK_DELAY_MS(&s_handle, AS5600_DelayMs);
+  DRIVER_AS5600_LINK_DEBUG_PRINT(&s_handle, AS5600_DebugPrint);
+  if (as5600_init(&s_handle) != 0)
   {
+    CAW_LOG_ERROR("AS5600 driver init FAILED: I2C err=0x%02lX state=0x%02X",
+                  (unsigned long)HAL_I2C_GetError(hi2c), (unsigned)HAL_I2C_GetState(hi2c));
     AS5600_RecordReadError(sensor);
     return -1;
   }
-  sensor->magnet_detected = true;
+
+  /*
+   * STATUS 只作诊断打点，磁体检测判定已取消：MD/ML/MH 不再决定初始化成败，
+   * 仅总线读失败才返回错误。失败点分开打点，否则统一返回 -1 分不清是总线没通还是 CONF 没写进去。
+   * HAL ErrorCode：0x04=AF 从机不应答（地址/供电/SDA 断线），0x20=TIMEOUT 总线 BUSY
+   * 卡死或等待标志超时（无上拉、线被拉低），0x01=BERR 总线错误。
+   */
+  if (as5600_get_status(&s_handle, &status) != 0)
+  {
+    CAW_LOG_ERROR("AS5600 STATUS(0x0B) read FAILED: I2C err=0x%02lX state=0x%02X",
+                  (unsigned long)HAL_I2C_GetError(hi2c), (unsigned)HAL_I2C_GetState(hi2c));
+    AS5600_RecordReadError(sensor);
+    return -1;
+  }
+  CAW_LOG_INFO("AS5600 STATUS=0x%02X MD=%u ML=%u MH=%u (magnet check disabled)",
+               (unsigned)status,
+               (unsigned)((status & AS5600_STATUS_MAGNET_DETECT) != 0U),
+               (unsigned)((status & AS5600_STATUS_MAGNET_WEAK) != 0U),
+               (unsigned)((status & AS5600_STATUS_MAGNET_STRONG) != 0U));
 
   /* 慢速滤波必须显式配置：上电默认 16x 的阶跃延迟对 1 kHz 修正不可接受 */
-  if ((AS5600_WriteRegisterVerified(sensor, AS5600_CONF_LOW_REGISTER,
-                                    AS5600_CONF_LOW_VALUE,
-                                    AS5600_CONF_LOW_MASK) != 0) ||
-      (AS5600_WriteRegisterVerified(sensor, AS5600_CONF_HIGH_REGISTER,
-                                    AS5600_CONF_HIGH_VALUE,
-                                    AS5600_CONF_HIGH_MASK) != 0))
+  if (AS5600_WriteRegisterVerified(AS5600_CONF_LOW_REGISTER,
+                                   AS5600_CONF_LOW_VALUE,
+                                   AS5600_CONF_LOW_MASK) != 0)
   {
+    CAW_LOG_ERROR("AS5600 CONF low(0x08) write/verify FAILED: I2C err=0x%02lX",
+                  (unsigned long)HAL_I2C_GetError(hi2c));
+    AS5600_RecordReadError(sensor);
+    return -1;
+  }
+  if (AS5600_WriteRegisterVerified(AS5600_CONF_HIGH_REGISTER,
+                                   AS5600_CONF_HIGH_VALUE,
+                                   AS5600_CONF_HIGH_MASK) != 0)
+  {
+    CAW_LOG_ERROR("AS5600 CONF high(0x07) write/verify FAILED: I2C err=0x%02lX",
+                  (unsigned long)HAL_I2C_GetError(hi2c));
     AS5600_RecordReadError(sensor);
     return -1;
   }
 
-  if (AS5600_ReadRawAngle(sensor, &raw_angle) != 0)
+  if (as5600_get_raw_angle(&s_handle, &raw_angle) != 0)
   {
+    CAW_LOG_ERROR("AS5600 RAW_ANGLE(0x0C) read FAILED: I2C err=0x%02lX",
+                  (unsigned long)HAL_I2C_GetError(hi2c));
     AS5600_RecordReadError(sensor);
     return -1;
   }
@@ -168,7 +213,7 @@ int AS5600_Update(AS5600_T *sensor)
   int32_t delta;
   float wrap = 0.0f;
 
-  if ((sensor == NULL) || (sensor->hi2c == NULL) || (!sensor->magnet_detected))
+  if ((sensor == NULL) || (sensor->hi2c == NULL))
   {
     return -1;
   }
@@ -184,7 +229,7 @@ int AS5600_Update(AS5600_T *sensor)
     return -1;
   }
 
-  if (AS5600_ReadRawAngle(sensor, &raw_angle) != 0)
+  if (as5600_get_raw_angle(&s_handle, &raw_angle) != 0)
   {
     AS5600_RecordReadError(sensor);
     return -1;
@@ -219,15 +264,16 @@ int AS5600_Update(AS5600_T *sensor)
 }
 
 /*
- * 运行期磁体状态复检。角度通道只读 RAW_ANGLE，磁体掉落后器件仍会返回
- * 语法合法的角度值，必须由低频任务定期查 STATUS 才能发现。
- * 返回 0 正常，-1 磁体状态异常（须关断），-2 读失败。
- * 读失败与磁体异常必须分开：单次总线抖动不该关断电机，总线真死了角度通道会先
- * 失败，由 sensor_max_age_ms 兜底。
+ * 运行期 STATUS 观测。磁体检测判定已取消：这里只读 STATUS 打点 MD/ML/MH 变化，
+ * 不再据此关断电机。返回 0 读取正常，-2 读失败。
+ * 读失败单独返回是为了让调用方知道总线状态：单次总线抖动不该关断电机，总线真死了
+ * 角度通道会先失败，由 sensor_max_age_ms 兜底。
  * 与 TIM2 中断内的轮询读共用总线，调用方须保证期间不发起角度刷新。
  */
 int AS5600_CheckStatus(AS5600_T *sensor)
 {
+  /* 只在 STATUS 字节变化时打印：调磁体气隙时能实时看到 MD/ML/MH 翻转，又不会 10 Hz 刷屏 */
+  static uint16_t last_status = 0xFFFFU;
   uint8_t status = 0U;
 
   if (sensor == NULL)
@@ -235,17 +281,20 @@ int AS5600_CheckStatus(AS5600_T *sensor)
     return -1;
   }
 
-  if (AS5600_ReadRegister(sensor, AS5600_STATUS_REGISTER, &status) != 0)
+  if (as5600_get_status(&s_handle, &status) != 0)
   {
     AS5600_RecordReadError(sensor);
     return -2;
   }
 
-  if (AS5600_ValidateStatus(status) != 0)
+  if (status != last_status)
   {
-    sensor->magnet_detected = false;
-    sensor->valid = false;
-    return -1;
+    last_status = status;
+    CAW_LOG_INFO("AS5600 STATUS=0x%02X MD=%u ML=%u MH=%u",
+                 (unsigned)status,
+                 (unsigned)((status & AS5600_STATUS_MAGNET_DETECT) != 0U),
+                 (unsigned)((status & AS5600_STATUS_MAGNET_WEAK) != 0U),
+                 (unsigned)((status & AS5600_STATUS_MAGNET_STRONG) != 0U));
   }
 
   return 0;
@@ -263,7 +312,7 @@ float AS5600_GetAngle(const AS5600_T *sensor)
 
 bool AS5600_IsValid(const AS5600_T *sensor)
 {
-  return (sensor != NULL) && sensor->valid && sensor->magnet_detected;
+  return (sensor != NULL) && sensor->valid;
 }
 
 bool AS5600_IsFresh(const AS5600_T *sensor, uint32_t now, uint32_t max_age_ms)

@@ -18,6 +18,8 @@
 #include "UserData_Motor.h"
 #include "UserData_Parameter.h"
 #include "UserData_UserControl.h"
+/* [LOG] 上电标定流程的排查打点，只在 Sguan_Start_Tick() 内使用（while(1) 上下文，允许阻塞） */
+#include "log.h"
 /* USER CODE END Includes */
 
 // 电机控制核心结构体设计
@@ -903,6 +905,8 @@ static void Sguan_PLL_Init(SguanFOC_System_STRUCT *sguan){
 // Sguan...Tick系统开始的核心文件，主任务初始化函数
 static void Sguan_Start_Tick(void){
     if (Sguan.status == MOTOR_STATUS_UNINITIALIZED){
+        /* [LOG] 标定流程逐节点打点：卡死时最后一条日志即卡死位置。格式串只用 ASCII（armcc 按 GBK 解码源码） */
+        CAW_LOG_INFO("[START] init begin mode=%u", (unsigned)Sguan.mode);
         // 用户自定义的电机参数和控制系统参数
         User_InitialInit();
         User_MotorSet();
@@ -915,18 +919,37 @@ static void Sguan_Start_Tick(void){
         Sguan_Control_Init(&Sguan);
         Sguan_PLL_Init(&Sguan);
         Printf_Init(&Sguan.TXdata);
+        CAW_LOG_INFO("[START] params+controllers ready VBUS=%.1f Poles=%u Duty=%u T=%.1f us",
+                     (double)Sguan.motor.VBUS, (unsigned)Sguan.motor.Poles,
+                     (unsigned)Sguan.motor.Duty, (double)(Sguan.PMSM_RUN_T*1e6f));
         // 读取电流偏置
         Sguan.status = MOTOR_STATUS_CALIBRATING;
         Offset_CurrentRead(&Sguan);
+        /* [LOG] 零矢量下零偏应≈2048(REF/2)；接近 0 说明 ADC 注入触发没通或采样为 0 */
+        CAW_LOG_INFO("[START] current offset off0=%ld off1=%ld gain=%.5f A/LSB",
+                     (long)Sguan.current.Pos_offset0, (long)Sguan.current.Pos_offset1,
+                     (double)Sguan.current.Final_Gain);
         //电机回零操作
         /* [PATCH-4] 原实现固定 0.3f*VBUS。SVPWM 归一化后相电压 = ratio*VBUS/sqrt(3)，
            0.3 在 24 V 母线下是 4.16 V，配 0.19 Ω 相阻约 22 A，超出 ±16.5 A 采样量程
            并会触发 DRV8301 的 OC 锁存。比例改由 UserData_Calculate.h 配置。
            详见 docs/sguanfoc-patch.md */
         Sguan_Positioning_Set(&Sguan,Align_Voltage_Ratio*Sguan.motor.VBUS,0.0f);
+        CAW_LOG_INFO("[START] align begin ratio=%.2f duty=%u/%u/%u, hold 1000 ms",
+                     (double)Align_Voltage_Ratio, (unsigned)Sguan.foc.Duty_u,
+                     (unsigned)Sguan.foc.Duty_v, (unsigned)Sguan.foc.Duty_w);
         User_Delay(1000);
+        /* [LOG] 此刻对齐电压仍加在电机上，这组采样就是实际对齐电流（预期 ratio*VBUS/(sqrt3*Rs)） */
+        CAW_LOG_INFO("[START] align end raw=%ld/%ld Ia=%.3f A Ib=%.3f A angle=%.4f rad",
+                     (long)User_ReadADC_Raw(0), (long)User_ReadADC_Raw(1),
+                     (double)((User_ReadADC_Raw(0) - Sguan.current.Pos_offset0)*
+                              Sguan.current.Final_Gain*Sguan.motor.Current_Dir0),
+                     (double)((User_ReadADC_Raw(1) - Sguan.current.Pos_offset1)*
+                              Sguan.current.Final_Gain*Sguan.motor.Current_Dir1),
+                     (double)User_Encoder_ReadRad());
         // 读取角度偏置
         Offset_EncoderRead(&Sguan);
+        CAW_LOG_INFO("[START] encoder zero Pos_offset=%.4f rad", (double)Sguan.encoder.Pos_offset);
         // 电机失能并进入正常工作状态
         Sguan_Positioning_Set(&Sguan,0.0f,0.0f);
         User_Delay(800);
@@ -934,6 +957,7 @@ static void Sguan_Start_Tick(void){
         // 暂时还未书写
         //正常工作中(状态机运行)
         Sguan.status = MOTOR_STATUS_IDLE;
+        CAW_LOG_INFO("[START] calibration done -> IDLE, high loop now closed-loop");
     }
 }
 
