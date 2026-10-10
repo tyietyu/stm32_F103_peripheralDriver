@@ -120,7 +120,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* 上电初始化与标定（仅 status==0x01 时执行一次）+ JustFloat 波形上报 */
+    /* 上电初始化与标定（仅 status==0x01 时执行一次）；JustFloat 上报已关闭 */
     SguanFOC_main_Loop();
     /* 10 Hz 自限速：DRV8301 / AS5600 状态轮询，只置故障标志 */
     FocApp_DiagnoseLoop();

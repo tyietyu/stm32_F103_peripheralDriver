@@ -16,7 +16,7 @@
  * @reminder: 1->开启基于MTPA的弱磁控制
  * @return {*}
  */
-#define Open_FW_Calculate 0
+#define Open_FW_Calculate 1
 
 /**
  * @description: 宏定义决定UART或者CAN发送数据的模式
@@ -24,7 +24,7 @@
  * @reminder: 1->仅发送Debug数据，不发送正常数据
  * @return {*}
  */
-#define Printf_Debug 0
+#define Printf_Debug 1
 
 /**
  * @description: 上电零位对齐时施加的 d 轴电压占 VBUS 的比例
@@ -36,7 +36,7 @@
  * @reminder: 库原值 0.3 对本电机是 0.975 A（1.2 倍堵转电流），换电机务必按上式复核
  * @return {*}
  */
-#define Align_Voltage_Ratio 0.15f
+#define Align_Voltage_Ratio 0.3f
 
 
 #endif // USERDATA_CALCULATE_H

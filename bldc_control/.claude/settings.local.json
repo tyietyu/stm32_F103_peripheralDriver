@@ -39,7 +39,14 @@
       "Bash(\"/d/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -j0 -r bldc_control.uvprojx -t bldc_control -o build_verify.log)",
       "Bash(grep -oE \"<STRONG><a name=\\\\\"\\\\[[0-9a-f]+\\\\]\\\\\"></a>\\(ADC_IRQHandler|TIM2_IRQHandler|USART1_IRQHandler|__2printf|SguanFOC_High_Loop|Printf_Debug_Loop|fputc|SguanFOC_Printf_Loop|Printf_Adjust\\)</STRONG>[^<]*\\(<[^>]*>[^<]*\\){0,6}\" bldc_control.htm)",
       "Bash(\"D:/Program Files \\(x86\\)/Keil_v5/UV4/UV4.exe\" -b bldc_control.uvprojx -j0 -o \"C:/Users/admin/AppData/Local/Temp/sguan_printf_test/keil_build.txt\")",
-      "Bash(echo \"uv4 exit=$?\")"
+      "Bash(echo \"uv4 exit=$?\")",
+      "Bash(awk '/^HAL_StatusTypeDef HAL_I2C_Mem_Read\\\\\\(/,/^}/' Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_i2c.c)",
+      "Bash(awk '/^static HAL_StatusTypeDef I2C_WaitOnFlagUntilTimeout\\\\\\(/,/^}/' Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_i2c.c)",
+      "Bash(cd E:/0001_LCWork/project_STM32/stm32_F103_peripheralDriver/bldc_control && echo \"=== HAL macros ===\"; grep -n \"define __HAL_I2C_GET_FLAG\\\\|define I2C_FLAG_BUSY \" Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_i2c.h; echo \"=== stale refs ===\"; grep -rn \"UpdateStart\\\\|OnRxComplete\\\\|OnRxError\\\\|rx_buf\\\\|AS5600_DMA_TIMEOUT\\\\|->busy\\\\|Mem_Read_DMA\\\\|MemRxCpltCallback\\\\|HAL_I2C_ErrorCallback\" --include=*.c --include=*.h . | grep -v \"Drivers/\" ; echo \"\\(end\\)\"; echo \"=== toolchain ===\"; which arm-none-eabi-gcc armclang 2>/dev/null; ls \"C:/Keil_v5/ARM/ARMCLANG/bin/armclang.exe\" \"C:/Keil_v5/ARM/ARMCC/bin/armcc.exe\" 2>/dev/null; grep -o 'ToolsetName.*\\\\|<uAC6>[01]</uAC6>' MDK-ARM/bldc_control.uvprojx | head -3)",
+      "Read(//c/Keil_v5/ARM/ARMCLANG/bin/**)",
+      "Bash(awk '/^static void Status_Switch_Loop\\\\\\(/,/^}/' SguanFOC/SguanFOC.c)",
+      "Bash(grep -n \"编码器刷新必须在中断里\\\\|AS5600_UpdateStart\\\\|与 DMA 读互斥\\\\|按库注释示例接上位机调参\\\\|一行转发到\\\\`FocApp_Send\\\\|### 5.4 上位机波形通道\\\\|沿用 \\\\`UserData_UserControl.h:69-80\\\\`\" \"基于SguanFOC的BLDC电流环、速度环、位置环控制.md\")",
+      "Bash(grep -v \"^\\\\\\([-+]\\\\\\) *\\\\\\(\\\\*\\\\|/\\\\*\\\\|\\\\*/\\\\\\)\")"
     ]
   }
 }

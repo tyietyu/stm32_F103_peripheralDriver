@@ -5,13 +5,14 @@
   *
   * 实时链路（NVIC 抢占优先级见各 MspInit）：
   *   ADC_IRQn(0)   15 kHz  JEOC -> 缓存 JDR1~3 -> SguanFOC_High_Loop()
-  *   TIM2_IRQn(1)   4 kHz  AS5600_UpdateStart()；内部 /4 -> SguanFOC_Low_Loop()
-  *   I2C1/DMA1(2,3) 事件   AS5600 角度 DMA 读完成 / 出错
-  *   USART1(4)      事件   上位机调参帧接收
+  *   TIM2_IRQn(1)   4 kHz  内部 /4 -> AS5600_Update()（1 kHz 轮询读）-> SguanFOC_Low_Loop()
   *   while(1)       最低   SguanFOC_main_Loop() + 10 Hz FocApp_DiagnoseLoop()
   *
+  * 上位机 JustFloat 协议已关闭：USART1 不挂接收，User_CorrespondSet() 为空实现，
+  * 速度给定直接来自本文件的 FocApp_SpeedCmd_RadS。
+  *
   * 中断入口沿用 HAL 的弱回调（HAL_ADCEx_InjectedConvCpltCallback /
-  * HAL_TIM_PeriodElapsedCallback / HAL_I2C_* / HAL_UART_*），stm32f4xx_it.c
+  * HAL_TIM_PeriodElapsedCallback），stm32f4xx_it.c
   * 保持 CubeMX 原样，重新生成代码不会丢失接线。
   ******************************************************************************
   */
@@ -22,27 +23,22 @@
 #include "i2c.h"
 #include "spi.h"
 #include "tim.h"
-#include "usart.h"
 
 #include "as5600.h"
 #include "drv8301.h"
 #include "SguanFOC.h"
 
-#include <string.h>
-
 /* TIM2 4 kHz 分频到 SguanFOC_Low_Loop() 的 1 kHz */
 #define FOC_LOW_LOOP_DIV            4U
 /* while(1) 里 DRV8301 / AS5600 状态轮询周期 */
 #define FOC_DIAG_PERIOD_MS          100U
-/* 角度数据允许的最大陈旧时间：4 kHz 刷新下正常不超过 1 ms */
+/* 角度数据允许的最大陈旧时间：1 kHz 刷新下正常不超过 1 ms */
 #define FOC_ENCODER_MAX_AGE_MS      5U
 /*
  * 连续多少个 1 kHz 周期判定角度陈旧才置故障。单次 I2C 抖动会让 AS5600 的 valid
- * 短暂为假（下一次 DMA 读 250 us 后即恢复），不做去抖会误关断电机。
+ * 短暂为假（下一次轮询读 1 ms 后即恢复），不做去抖会误关断电机。
  */
 #define FOC_ENCODER_STALE_LIMIT     3U
-/* JustFloat 一帧 12*4+4 = 52 字节 */
-#define FOC_TX_BUF_SIZE             64U
 /*
  * 给定值上限。全部低于 safe.Dcur_MAX/Qcur_MAX 的故障阈值，命令本身不该把状态机
  * 顶进 OVERCURRENT。HT3510：额定 0.53 A / 0.11 N.m，堵转 0.80 A，最大 965 rpm。
@@ -53,11 +49,17 @@
    方案阶段 4 的方向标定从 0.5 V 缓升到 2 V，本限幅只防误输入 */
 #define FOC_UQ_OPEN_LIMIT           6.0F
 
+/*
+ * 速度给定 [rad/s]，正负决定转向，上限 FOC_SPEED_LIMIT_RAD_S（约 965 rpm）。
+ * 上位机协议已关闭，改这里即改转速；volatile 便于在调试器里在线改值，
+ * 每个 15 kHz 周期由 FocApp_ApplyTargets() 限幅后落库。10 rad/s ≈ 95 rpm。
+ */
+volatile float FocApp_SpeedCmd_RadS = 10.0F;
+
 typedef struct
 {
     volatile float uq_open;   /* Velocity_OPEN_MODE：Uq 调制指令 */
     volatile float iq;        /* Current_SINGLE_MODE：Q 轴电流给定 [A] */
-    volatile float speed;     /* VelCur_DOUBLE_MODE：机械角速度给定 [rad/s] */
     volatile float pos;       /* PosVelCur_THREE_MODE：机械角度给定 [rad] */
 } FocApp_Target_T;
 
@@ -75,13 +77,9 @@ static volatile uint8_t s_mode_pending;
 
 static uint8_t  s_low_div;
 static uint8_t  s_stale_count;
-/* 诊断轮询/初始化的阻塞 I2C 与 TIM2 的 DMA 读互斥，置位期间跳过角度刷新 */
+/* 诊断轮询/初始化的阻塞 I2C 与 TIM2 的轮询读互斥，置位期间跳过角度刷新 */
 static volatile uint8_t s_i2c_blocking;
 static uint32_t s_diag_tick;
-
-static uint8_t  s_tx_buf[FOC_TX_BUF_SIZE];
-static uint8_t  s_rx_byte;
-static uint16_t s_rx_len;
 
 static float FocApp_Clamp(float value, float limit);
 static void  FocApp_CheckEncoderFresh(void);
@@ -103,22 +101,21 @@ void FocApp_Init(void)
 
     s_target.uq_open = 0.0F;
     s_target.iq = 0.0F;
-    s_target.speed = 0.0F;
     s_target.pos = 0.0F;
 
-    s_mode_request = Velocity_OPEN_MODE;
+    s_mode_request = VelCur_DOUBLE_MODE;
     s_mode_pending = 0U;
     s_low_div = 0U;
     s_stale_count = 0U;
     s_i2c_blocking = 0U;
     s_diag_tick = HAL_GetTick();
-    s_rx_len = 0U;
 
-    /* 上电先进开环、目标全零，方向标定完成前不允许直接进闭环 */
-    Sguan.mode = Velocity_OPEN_MODE;
-
-    /* 上位机调参通道：逐字节收，遇 '?' 交给库解析 */
-    (void)HAL_UART_Receive_IT(&huart1, &s_rx_byte, 1U);
+    /*
+     * 上位机协议已关闭，上电标定完成后直接进速度-电流双环，按 FocApp_SpeedCmd_RadS
+     * 转动。前提是 UserData_Motor.h 的 Motor_Dir / Current_Dir 已按方案阶段 4 标定，
+     * 方向反了速度环会正反馈飞车，只能靠 OVERCURRENT 兜底。
+     */
+    Sguan.mode = VelCur_DOUBLE_MODE;
 
     /* 库在 while(1) 的 Sguan_Start_Tick() 里看到 0x01 才会跑初始化与标定 */
     Sguan.status = MOTOR_STATUS_UNINITIALIZED;
@@ -141,8 +138,8 @@ void FocApp_HwStart(void)
     Sguan.foc.Ud_in = 0.0F;
     Sguan.foc.Uq_in = 0.0F;
 
-    /* 本函数里的 AS5600_Init() 是阻塞 I2C，重启时 TIM2 的 4 kHz DMA 读已在跑，
-       两者不能在同一总线上重入，先把角度刷新挡住 */
+    /* 本函数里的 AS5600_Init() 是阻塞 I2C，重启时 TIM2 的轮询读已在跑，两者不能在
+       同一总线上重入，先把角度刷新挡住。轮询读在中断内同步完成，置位后不会再有在途传输 */
     s_i2c_blocking = 1U;
 
     /*
@@ -159,8 +156,6 @@ void FocApp_HwStart(void)
         s_signal[FOC_SIGNAL_SENSOR_ERROR] = 1U;
     }
 
-    /* 挡住刷新之前可能已有一次 DMA 读在途（约 135 µs），等它收尾再动总线 */
-    HAL_Delay(1U);
     if (AS5600_Init(&g_encoder, &hi2c1) != 0)
     {
         s_signal[FOC_SIGNAL_ENCODER_ERROR] = 1U;
@@ -236,10 +231,10 @@ void FocApp_DiagnoseLoop(void)
 
     /*
      * 磁体掉落后器件仍返回语法合法的角度，只读 RAW_ANGLE 发现不了。
-     * 这里是阻塞 I2C，与 TIM2 发起的 DMA 读不能在同一总线上重入。
+     * 这里是阻塞 I2C，与 TIM2 发起的轮询读不能在同一总线上重入。
      */
     s_i2c_blocking = 1U;
-    if (AS5600_CheckStatus(&g_encoder) == -1) /* -2 是总线忙，下个周期重试 */
+    if (AS5600_CheckStatus(&g_encoder) == -1) /* -2 是读失败，下个周期重试 */
     {
         s_signal[FOC_SIGNAL_ENCODER_ERROR] = 1U;
     }
@@ -257,7 +252,7 @@ int32_t FocApp_GetCurrentRaw(uint8_t ch)
 float FocApp_GetEncoderRad(void)
 {
     /*
-     * 15 kHz ISR 内调用，必须非阻塞：只取 DMA 通道发布的缓存值。
+     * 15 kHz ISR 内调用，必须非阻塞：只取 AS5600_Update() 发布的缓存值。
      * 单个 float 32 位对齐，Cortex-M4 上读写原子，被抢占不会读到撕裂值。
      */
     return AS5600_GetOnceAngle(&g_encoder);
@@ -269,22 +264,6 @@ void FocApp_SetPwmDuty(uint16_t du, uint16_t dv, uint16_t dw)
     __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, du);
     __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, dv);
     __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, dw);
-}
-
-void FocApp_Send(uint8_t *buf, uint16_t len)
-{
-    if ((buf == NULL) || (len == 0U) || (len > FOC_TX_BUF_SIZE))
-    {
-        return;
-    }
-    /* 上一帧未发完就丢帧：波形通道不值得阻塞主循环，会拖垮 10 Hz 诊断 */
-    if (huart1.gState != HAL_UART_STATE_READY)
-    {
-        return;
-    }
-    /* 库传进来的是全局 TXdata，DMA 期间主循环会继续改写它，必须先拷出来 */
-    (void)memcpy(s_tx_buf, buf, len);
-    (void)HAL_UART_Transmit_DMA(&huart1, s_tx_buf, len);
 }
 
 uint8_t FocApp_GetFaultFlag(uint8_t which)
@@ -325,7 +304,8 @@ void FocApp_ApplyTargets(void)
         break;
     case VelCur_DOUBLE_MODE:
         Sguan.foc.Target_Id = 0.0F;
-        Sguan.foc.Target_Speed = s_target.speed;
+        /* 给定来自代码内变量，可能被调试器在线改成任意值，落库前必须限幅 */
+        Sguan.foc.Target_Speed = FocApp_Clamp(FocApp_SpeedCmd_RadS, FOC_SPEED_LIMIT_RAD_S);
         break;
     case PosVelCur_THREE_MODE:
         Sguan.foc.Target_Id = 0.0F;
@@ -353,7 +333,7 @@ void FocApp_SetTarget(float value)
         s_target.iq = FocApp_Clamp(value, FOC_IQ_LIMIT_A);
         break;
     case VelCur_DOUBLE_MODE:
-        s_target.speed = FocApp_Clamp(value, FOC_SPEED_LIMIT_RAD_S);
+        FocApp_SpeedCmd_RadS = FocApp_Clamp(value, FOC_SPEED_LIMIT_RAD_S);
         break;
     case PosVelCur_THREE_MODE:
         s_target.pos = value; /* 多圈定位不限幅，由速度环输出限幅约束过程量 */
@@ -369,7 +349,7 @@ void FocApp_SetMode(uint8_t mode)
     {
         return;
     }
-    /* UART 中断上下文只登记请求，真正切换放到 15 kHz 环，避免撕裂控制器状态 */
+    /* 调用方只登记请求，真正切换放到 15 kHz 环，避免撕裂控制器状态 */
     s_mode_request = mode;
     s_mode_pending = 1U;
 }
@@ -441,7 +421,7 @@ static void FocApp_ApplyModeRequest(void)
     /* 上一模式的给定量在新模式下量纲完全不同，必须清零 */
     s_target.uq_open = 0.0F;
     s_target.iq = 0.0F;
-    s_target.speed = 0.0F;
+    FocApp_SpeedCmd_RadS = 0.0F;
     /* 位置模式以当前位置为初始目标，避免切入瞬间往绝对零位大幅跳转 */
     s_target.pos = (float)Sguan.encoder.Real_Pos;
     Sguan.foc.Ud_in = 0.0F;
@@ -504,76 +484,23 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         return;
     }
 
-    /*
-     * 编码器刷新必须在中断里：上电标定阶段库会用 User_Delay(1000) 阻塞主循环，
-     * 而 Offset_EncoderRead() 需要此时的新鲜角度。
-     */
-    if (s_i2c_blocking == 0U)
-    {
-        (void)AS5600_UpdateStart(&g_encoder);
-    }
-
     s_low_div++;
     if (s_low_div >= FOC_LOW_LOOP_DIV)
     {
         s_low_div = 0U;
+
+        /*
+         * 编码器刷新必须在中断里：上电标定阶段库会用 User_Delay(1000) 阻塞主循环，
+         * 而 Offset_EncoderRead() 需要此时的新鲜角度。
+         * 轮询读在 100 kHz 下约 0.5 ms，4 kHz 每周期都读会让本中断占满 CPU、
+         * 饿死主循环，故降为 1 kHz，与低速环同拍，读完即做新鲜度判定。
+         */
+        if (s_i2c_blocking == 0U)
+        {
+            (void)AS5600_Update(&g_encoder);
+        }
+
         FocApp_CheckEncoderFresh();
         SguanFOC_Low_Loop();
     }
-}
-
-/* AS5600 角度 DMA 读完成 / 出错。本板 I2C1 上只挂了 AS5600 */
-void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
-{
-    if (hi2c->Instance == I2C1)
-    {
-        AS5600_OnRxComplete(&g_encoder);
-    }
-}
-
-void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
-{
-    if (hi2c->Instance == I2C1)
-    {
-        AS5600_OnRxError(&g_encoder);
-    }
-}
-
-/* 上位机调参帧：格式 AO=13.14? / BO=2? / CO=1? */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance != USART1)
-    {
-        return;
-    }
-
-    if (s_rx_len < sizeof(Sguan_PrintfBuff))
-    {
-        Sguan_PrintfBuff[s_rx_len] = s_rx_byte;
-        s_rx_len++;
-    }
-    else
-    {
-        s_rx_len = 0U; /* 帧超长，整帧丢弃重新同步 */
-    }
-
-    if (s_rx_byte == (uint8_t)'?')
-    {
-        /* 库在这里解析 Sguan_PrintfBuff 并清空缓冲 */
-        SguanFOC_Printf_Loop(&s_rx_byte, 1U);
-        s_rx_len = 0U;
-    }
-
-    (void)HAL_UART_Receive_IT(huart, &s_rx_byte, 1U);
-}
-
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance != USART1)
-    {
-        return;
-    }
-    /* 单次帧错误后若不重新挂接收，上位机调参通道会永久失效 */
-    s_rx_len = 0U;
-    (void)HAL_UART_Receive_IT(huart, &s_rx_byte, 1U);
 }

@@ -78,7 +78,7 @@ static inline float User_Encoder_ReadRad(void){
 | -------------------------------------------- | -------------------- | ---------- |
 | `SguanFOC_High_Loop(void)`                 | ADC 注入组 JEOC 中断 | 15 kHz     |
 | `SguanFOC_Low_Loop(void)`                  | TIM2 中断内 /4 分频  | 1 kHz      |
-| `SguanFOC_Printf_Loop(uint8_t*, uint16_t)` | USART1 接收完成中断  | 事件驱动   |
+| `SguanFOC_Printf_Loop(uint8_t*, uint16_t)` | 未调用（上位机协议已关闭） | —          |
 | `SguanFOC_main_Loop(void)`                 | `while(1)`         | 最低优先级 |
 
 ---
@@ -92,10 +92,9 @@ NVIC 优先级分组为 `NVIC_PRIORITYGROUP_4`（4 位全抢占）。
 | 中断源                             | 频率   | 抢占优先级  | 职责                                                                        |
 | ---------------------------------- | ------ | ----------- | --------------------------------------------------------------------------- |
 | `ADC_IRQn`（注入组 JEOC）        | 15 kHz | **0** | 读 JDR1~3 存入缓存 →`SguanFOC_High_Loop()`                               |
-| `TIM2_IRQn`                      | 4 kHz  | 2           | 每次调`AS5600_UpdateStart()`；内部 /4 → 1 kHz 调 `SguanFOC_Low_Loop()` |
-| `DMA1_Stream0/6`、`I2C1_EV/ER` | 事件   | 3           | HAL 转发 →`AS5600_OnRxComplete()` / `OnRxError()`                      |
-| `USART1_IRQn` + TX DMA           | 事件   | 4           | RX →`SguanFOC_Printf_Loop()`；TX 完成清忙标志                            |
-| `SysTick`                        | 1 kHz  | 15          | `HAL_IncTick()`                                                           |
+| `TIM2_IRQn`                      | 4 kHz  | 1           | 内部 /4 → 1 kHz：轮询读 `AS5600_Update()`（约 0.5 ms）后调 `SguanFOC_Low_Loop()` |
+| `USART1_IRQn` + TX DMA           | 事件   | 4           | 上位机协议已关闭：不挂接收，`User_CorrespondSet()` 为空实现                 |
+| `SysTick`                        | 1 kHz  | **0** | `HAL_IncTick()`；必须能抢占 TIM2，否则中断内轮询 I2C 的 HAL 超时永不触发 |
 | `while(1)`                       | —     | —          | `SguanFOC_main_Loop()` + 10 Hz 诊断轮询                                   |
 
 ### 4.2 单个 PWM 周期内的时序
@@ -124,10 +123,10 @@ ADC 时钟 = PCLK2/4 = 21 MHz，注入采样时间 3 cycles → 单通道 (3+12)
 ### 4.3 三条硬约束
 
 1. **`User_Encoder_ReadRad()` 在 15 kHz ISR 内被调用，必须非阻塞。** 只能返回 `AS5600_GetOnceAngle()` 的缓存值。该函数返回单个 `float`（`sensor->mechanical_angle`），Cortex-M4 上 32 位对齐读写是原子的，被高优先级 ISR 抢占不会读到撕裂值。
-2. **编码器刷新必须在中断里，不能放主循环。** 上电标定阶段库会调用 `User_Delay(1000)` 阻塞主循环（`SguanFOC.c:919`），而 `Offset_EncoderRead()` 需要此时的新鲜角度。因此 `AS5600_UpdateStart()` 挂在 TIM2 4 kHz 中断。
-   AS5600 走硬件 I2C 400 kHz，单次读 RAW_ANGLE 约 6 字节 × 9 bit / 400 kHz ≈ **135 µs**，4 kHz（250 µs）留 46% 余量。
-   `AS5600_UpdateStart()` 内的 5 ms 超时是**时限判定而非忙等**（`as5600.c:168-174`），DeInit/Init 仅数十微秒，放中断安全。
-3. **`MOTOR_STATUS_*_Signal()` 六个钩子在 1 kHz 中断里被调，只能读全局 `volatile` 标志。** `DRV8301_ReadStatus()` 是阻塞 SPI（328 kHz，2×16 bit ≈ 100 µs），`AS5600_CheckStatus()` 是阻塞 I2C 且与 DMA 读互斥（返回 −2 表示总线忙）。二者放 `while(1)` 里 10 Hz 轮询，只负责置标志。
+2. **编码器刷新必须在中断里，不能放主循环。** 上电标定阶段库会调用 `User_Delay(1000)` 阻塞主循环（`SguanFOC.c:919`），而 `Offset_EncoderRead()` 需要此时的新鲜角度。因此 `AS5600_Update()` 挂在 TIM2 中断。
+   AS5600 走硬件 I2C 100 kHz 阻塞轮询，单次读 RAW_ANGLE 约 **0.5 ms**，4 kHz 每周期都读会占满 CPU 并饿死主循环，故降为每 4 个 TIM2 周期读一次（1 kHz，与低速环同拍）。
+   轮询读依赖 HAL 的 tick 超时，`TICK_INT_PRIORITY` 必须为 0 让 SysTick 能抢占 TIM2；总线卡死（BUSY 不清）时 `AS5600_Update()` 直接 DeInit/Init 复位 I2C1（数十微秒），不忙等。
+3. **`MOTOR_STATUS_*_Signal()` 六个钩子在 1 kHz 中断里被调，只能读全局 `volatile` 标志。** `DRV8301_ReadStatus()` 是阻塞 SPI（328 kHz，2×16 bit ≈ 100 µs），`AS5600_CheckStatus()` 是阻塞 I2C 且与中断内的轮询读互斥（调用期间由 `s_i2c_blocking` 挡住角度刷新，返回 −2 表示读失败）。二者放 `while(1)` 里 10 Hz 轮询，只负责置标志。
 
 ---
 
@@ -139,7 +138,7 @@ ADC 时钟 = PCLK2/4 = 21 MHz，注入采样时间 3 cycles → 单通道 (3+12)
 /* ---- 生命周期与调度 ---- */
 void     FocApp_Init(void);          /* main() 中调用：装配全局对象，写 Sguan.status = 0x01 触发库启动 */
 void     FocApp_OnAdcInjected(void); /* ADC_IRQHandler 转发：缓存 JDR → SguanFOC_High_Loop() */
-void     FocApp_OnTim2Tick(void);    /* TIM2_IRQHandler 转发：AS5600_UpdateStart() + /4 → SguanFOC_Low_Loop() */
+void     FocApp_OnTim2Tick(void);    /* TIM2_IRQHandler 转发：/4 → AS5600_Update() + SguanFOC_Low_Loop() */
 void     FocApp_DiagnoseLoop(void);  /* while(1) 中 10 Hz：DRV8301/AS5600 状态轮询，置故障标志 */
 void     FocApp_Shutdown(void);      /* 急停：关 MOE + DRV8301_Shutdown() */
 
@@ -163,8 +162,8 @@ uint8_t  FocApp_GetFaultFlag(uint8_t which);                    /* ← MOTOR_STA
 | `UserData_Parameter.h`   | PID / LADRC / PLL / 滤波器参数，按 6.2 重算                                                                                                                                                              |
 | `UserData_Calculate.h`   | `Open_PI_Control = 1`（速度环用 PI）、`Open_FW_Calculate = 0`（关弱磁）、`Printf_Debug = 0`                                                                                                        |
 | `UserData_Status.h`      | 6 个`*_Signal()` 转发到 `FocApp_GetFaultFlag()`；24 个 `*_Loop()` 一期只在急停/失能/各故障态里调 `FocApp_Shutdown()`，其余留空                                                                   |
-| `UserData_UserControl.h` | `User_UserControl()` 读 `foc_app` 的目标值；`User_AO/BO/CO_Adjust()` 按库注释示例接上位机调参；`User_UserTX()` 沿用现有 12 通道映射                                                              |
-| `UserData_Correspond.h`  | 一行转发到`FocApp_Send()`                                                                                                                                                                              |
+| `UserData_UserControl.h` | `User_UserControl()` 读 `foc_app` 的目标值；`User_AO/BO/CO_Adjust()` 仍转发到 `FocApp_Set*()`，但上位机协议已关闭、无人触发；`User_UserTX()` 沿用现有 12 通道映射                                 |
+| `UserData_Correspond.h`  | `User_CorrespondSet()` 为空实现（上位机协议已关闭，速度给定由 `foc_app.c` 的 `FocApp_SpeedCmd_RadS` 直接决定）                                                                                          |
 
 ### 5.3 电流通道映射
 
@@ -175,6 +174,10 @@ uint8_t  FocApp_GetFaultFlag(uint8_t which);                    /* ← MOTOR_STA
 理由：IC_FB 走外接 LM2904（R45=1k / R47=10k，增益 10 V/V），与 DRV8301 内部放大器不是同一条通道，存在增益与失调失配（README.md:40-47）。让它不进控制环，只在诊断中与重构值比对，正好用于验证采样链路。
 
 ### 5.4 上位机波形通道
+
+> **当前已关闭。** `User_CorrespondSet()` 为空实现、USART1 不挂接收，JustFloat 帧与 `AO/BO/CO` 调参帧都不再经过串口；
+> 上电标定完成后直接进速度-电流双环，转速由 `foc_app.c` 的 `volatile float FocApp_SpeedCmd_RadS`（默认 10 rad/s）决定，可在代码或调试器里改。
+> 重新接入时恢复 `User_CorrespondSet()` 的转发并在 `FocApp_Init()` 里重新挂 `HAL_UART_Receive_IT()` 即可，下表映射仍然有效。
 
 沿用 `UserData_UserControl.h:69-80` 已定义的映射，无需改动：
 

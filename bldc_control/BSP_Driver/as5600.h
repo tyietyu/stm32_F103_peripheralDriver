@@ -45,20 +45,13 @@
 #define AS5600_MAX_STEP_COUNTS      512
 #define AS5600_MAX_STEP_REJECT      3U
 
-/* 阻塞式访问（Init / CheckStatus）的总线超时 */
-#define AS5600_I2C_TIMEOUT_MS       10U
-/*
- * DMA 读的卡死判定。从机拉死 SDA 时 DMA 传输不会产生任何回调，busy 会永远置位，
- * 角度通道就此永久失效，因此必须有超时兜底并复位外设。
- */
-#define AS5600_DMA_TIMEOUT_MS       5U
+/* 单次阻塞读/写的总线超时。轮询读在 TIM2 中断内执行（100 kHz 下正常约 0.5 ms），
+   该值同时决定总线故障时中断的最长占用时间，取 2 ms 为正常读的 4 倍余量 */
+#define AS5600_I2C_TIMEOUT_MS       2U
 
 typedef struct
 {
   I2C_HandleTypeDef *hi2c;
-  uint8_t rx_buf[2];          /* DMA 目标缓冲，须常驻，不能用栈变量 */
-  volatile uint8_t busy;      /* 1 = 一次 DMA 读进行中 */
-  uint32_t start_tick;        /* 本次 DMA 读的发起时刻，供超时判定 */
   uint16_t raw_angle;
   float mechanical_angle;
   float full_angle;
@@ -76,16 +69,12 @@ typedef struct
  */
 int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c);
 /*
- * 非阻塞地发起一次 RAW_ANGLE 读取，由周期任务调用。
- * 0 已发起；-1 发起失败或参数非法；-2 上一次尚未完成（本周期跳过，不算错误）。
- * 角度解算在 AS5600_OnRxComplete() 里完成。
+ * 轮询读取一次 RAW_ANGLE 并完成解算发布，由周期任务（TIM2 中断）调用。
+ * 100 kHz 总线下单次读约 0.5 ms，不能按 4 kHz 每周期调用。
+ * 返回 0 成功；-1 失败（总线卡死时内部复位 I2C 外设恢复）。
  */
-int AS5600_UpdateStart(AS5600_T *sensor);
-/* 由 HAL_I2C_MemRxCpltCallback 转发，在中断上下文完成本次采样的解算与发布 */
-void AS5600_OnRxComplete(AS5600_T *sensor);
-/* 由 HAL_I2C_ErrorCallback 转发 */
-void AS5600_OnRxError(AS5600_T *sensor);
-/* 运行期磁体状态复检：0 正常，-1 磁体异常（须关断），-2 读失败或总线忙 */
+int AS5600_Update(AS5600_T *sensor);
+/* 运行期磁体状态复检：0 正常，-1 磁体异常（须关断），-2 读失败 */
 int AS5600_CheckStatus(AS5600_T *sensor);
 /* 单圈机械角 [0, 2π)，供电角度换算 */
 float AS5600_GetOnceAngle(const AS5600_T *sensor);

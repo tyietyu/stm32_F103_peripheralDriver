@@ -49,16 +49,16 @@ DRV8301_Init(&hspi2);         /* 返回 DRV8301_OK 表示已使能并完成配�
 ### AS5600
 
 * VCC --红；GND--黑；SCL--黄；SDA--绿；
-* 走硬件 I2C1（PB6/PB7，400 kHz）。角度读取为 DMA 非阻塞：周期任务调
-  `AS5600_UpdateStart()` 发起，解算与发布在 `AS5600_OnRxComplete()` 里完成，
-  由 `HAL_I2C_MemRxCpltCallback`（实现在 `main.c`）转发；错误走 `AS5600_OnRxError()`。
-  返回 -2 表示上一次尚未完成，本周期跳过，不算错误。
-* 从机拉死 SDA 时 DMA 不产生任何回调，`AS5600_UpdateStart()` 内置 5 ms 超时，
-  超时后 DeInit/Init 复位 I2C1，避免角度通道永久失效。
+* 走硬件 I2C1（PB6/PB7，100 kHz）。角度读取为阻塞轮询：TIM2 中断内每 4 个周期
+  （1 kHz）调用一次 `AS5600_Update()`，读取、解算与发布在同一函数内完成；
+  100 kHz 下单次读约 0.5 ms，不能按 4 kHz 每周期都读，否则中断占满 CPU。
+* 轮询读在中断内依赖 HAL 超时，`TICK_INT_PRIORITY` 已设为 0 让 SysTick 能抢占 TIM2；
+  总线卡死（从机拉死 SDA/SCL，BUSY 不清）时 `AS5600_Update()` 直接 DeInit/Init
+  复位 I2C1 恢复，避免角度通道永久失效。
 * 单次步进超过 1/8 圈（512 counts）按误码丢弃，
   连续 `AS5600_MAX_STEP_REJECT`(3) 次后以当前读数重新同步，避免永久失效。
 * `AS5600_CheckStatus()` 需由低频任务定期调用：磁体掉落后器件仍返回语法合法的角度值，
-  只读 RAW_ANGLE 发现不了。返回 -1 表示磁体异常须关断，-2 表示总线读失败或 DMA 读进行中
-  （阻塞读与 DMA 读不能在同一总线上重入）。
+  只读 RAW_ANGLE 发现不了。返回 -1 表示磁体异常须关断，-2 表示总线读失败
+  （与中断内的轮询读共用总线，调用期间由 `s_i2c_blocking` 挡住角度刷新）。
 * `AS5600_GetAngle()` 为累计角（含圈数，供位置环），`AS5600_GetOnceAngle()` 为单圈机械角
   （供电角度换算）。驱动不提供速度输出，速度反馈须由 FOC 侧的观测器给出。

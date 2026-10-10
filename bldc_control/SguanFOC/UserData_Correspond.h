@@ -7,8 +7,10 @@
 
 /* ================= 驱动代码(驱动层) ================= */
 static inline void User_CorrespondSet(unsigned char *ch, unsigned short int size){
-    /* USART1 921600 + TX DMA，上一帧未发完则丢帧，不阻塞主循环 */
-    FocApp_Send((uint8_t *)ch,(uint16_t)size);
+    /* 上位机 JustFloat 协议已关闭：库仍会组帧/printf，但不再送往 USART1。
+       速度给定改由 foc_app.c 的 FocApp_SpeedCmd_RadS 直接决定 */
+    (void)ch;
+    (void)size;
 }
 
 

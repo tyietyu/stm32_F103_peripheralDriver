@@ -27,9 +27,7 @@ static inline float User_Encoder_ReadRad(void){
     return FocApp_GetEncoderRad();
 }
 
-static inline void User_PwmDuty_Set(unsigned short int Duty_u,
-                                unsigned short int Duty_v,
-                                unsigned short int Duty_w){
+static inline void User_PwmDuty_Set(unsigned short int Duty_u, unsigned short int Duty_v, unsigned short int Duty_w){
     /* 死区由 TIM1 的 DTG 硬件生成（84 -> 500 ns），此处不做死区补偿 */
     FocApp_SetPwmDuty((uint16_t)Duty_u,(uint16_t)Duty_v,(uint16_t)Duty_w);
 }

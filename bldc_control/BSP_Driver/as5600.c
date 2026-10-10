@@ -55,7 +55,7 @@ static int AS5600_ValidateStatus(uint8_t status)
   return 0;
 }
 
-/* 阻塞式读取，仅供 AS5600_Init() 取首个基准角度使用；运行期走 DMA 路径 */
+/* 阻塞式读取原始角度，Init 取首个基准角度与运行期轮询共用 */
 static int AS5600_ReadRawAngle(AS5600_T *sensor, uint16_t *raw_angle)
 {
   uint8_t buffer[2] = {0U};
@@ -97,6 +97,16 @@ static void AS5600_PublishSample(AS5600_T *sensor, uint16_t raw_angle, uint32_t 
   sensor->valid = true;
 }
 
+/*
+ * 总线恢复。从机拉死 SDA/SCL 时 BUSY 标志不会自行清除，HAL 内部会空转 25 ms
+ * 等待超时且后续每次读都立即失败，必须复位外设（SWRST 清 BUSY）才能恢复。
+ */
+static void AS5600_RecoverBus(AS5600_T *sensor)
+{
+  (void)HAL_I2C_DeInit(sensor->hi2c);
+  (void)HAL_I2C_Init(sensor->hi2c);
+}
+
 int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c)
 {
   uint8_t status = 0U;
@@ -108,10 +118,6 @@ int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c)
   }
 
   sensor->hi2c = hi2c;
-  sensor->rx_buf[0] = 0U;
-  sensor->rx_buf[1] = 0U;
-  sensor->busy = 0U;
-  sensor->start_tick = 0U;
   sensor->raw_angle = 0U;
   sensor->mechanical_angle = 0.0f;
   sensor->full_angle = 0.0f;
@@ -152,60 +158,37 @@ int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c)
   return 0;
 }
 
-int AS5600_UpdateStart(AS5600_T *sensor)
+/*
+ * 轮询读取并发布一次采样。由 TIM2 中断每 4 个周期（1 kHz）调用一次：
+ * 100 kHz 总线下单次读约 0.5 ms，不能在 4 kHz 每周期都做，否则中断占满 CPU。
+ */
+int AS5600_Update(AS5600_T *sensor)
 {
+  uint16_t raw_angle;
+  int32_t delta;
+  float wrap = 0.0f;
+
   if ((sensor == NULL) || (sensor->hi2c == NULL) || (!sensor->magnet_detected))
   {
     return -1;
   }
 
-  if (sensor->busy)
+  /*
+   * 总线空闲时 BUSY 必须为 0；为 1 说明从机把 SDA/SCL 拉死在中途。此时不能交给
+   * HAL（其内部会空转 25 ms 等 BUSY 清除），直接复位外设恢复，否则角度通道永久失效。
+   */
+  if (__HAL_I2C_GET_FLAG(sensor->hi2c, I2C_FLAG_BUSY) != RESET)
   {
-    /*
-     * 从机拉死 SDA 时 DMA 不会产生任何回调，busy 会一直挂着。超时后必须复位外设，
-     * 否则角度通道永久失效。
-     */
-    if ((uint32_t)(HAL_GetTick() - sensor->start_tick) > AS5600_DMA_TIMEOUT_MS)
-    {
-      (void)HAL_I2C_DeInit(sensor->hi2c);
-      (void)HAL_I2C_Init(sensor->hi2c);
-      sensor->busy = 0U;
-      AS5600_RecordReadError(sensor);
-    }
-    return -2;
-  }
-
-  /* busy 必须在发起前置位：完成回调在中断上下文，可能先于本函数返回 */
-  sensor->start_tick = HAL_GetTick();
-  sensor->busy = 1U;
-
-  if (HAL_I2C_Mem_Read_DMA(sensor->hi2c, AS5600_I2C_ADDR,
-                           AS5600_RAW_ANGLE_REGISTER, I2C_MEMADD_SIZE_8BIT,
-                           sensor->rx_buf, 2U) != HAL_OK)
-  {
-    sensor->busy = 0U;
+    AS5600_RecoverBus(sensor);
     AS5600_RecordReadError(sensor);
     return -1;
   }
 
-  return 0;
-}
-
-/* 在 I2C DMA 接收完成中断上下文执行：解算本次采样并发布 */
-void AS5600_OnRxComplete(AS5600_T *sensor)
-{
-  int32_t delta;
-  float wrap = 0.0f;
-  uint16_t raw_angle;
-
-  if (sensor == NULL)
+  if (AS5600_ReadRawAngle(sensor, &raw_angle) != 0)
   {
-    return;
+    AS5600_RecordReadError(sensor);
+    return -1;
   }
-
-  sensor->busy = 0U;
-  raw_angle = (((uint16_t)sensor->rx_buf[0] << 8) |
-               (uint16_t)sensor->rx_buf[1]) & AS5600_RAW_MASK;
 
   /* 折叠到 ±半圈得到真实步进，折叠方向同时给出跨圈量 */
   delta = (int32_t)raw_angle - (int32_t)sensor->raw_angle;
@@ -226,31 +209,22 @@ void AS5600_OnRxComplete(AS5600_T *sensor)
     if (sensor->step_reject_count < AS5600_MAX_STEP_REJECT)
     {
       ++sensor->step_reject_count;
-      return;
+      return -1;
     }
   }
 
   sensor->rotation_offset += wrap;
   AS5600_PublishSample(sensor, raw_angle, HAL_GetTick());
-}
-
-void AS5600_OnRxError(AS5600_T *sensor)
-{
-  if (sensor == NULL)
-  {
-    return;
-  }
-
-  sensor->busy = 0U;
-  AS5600_RecordReadError(sensor);
+  return 0;
 }
 
 /*
  * 运行期磁体状态复检。角度通道只读 RAW_ANGLE，磁体掉落后器件仍会返回
  * 语法合法的角度值，必须由低频任务定期查 STATUS 才能发现。
- * 返回 0 正常，-1 磁体状态异常（须关断），-2 读失败或总线忙。
+ * 返回 0 正常，-1 磁体状态异常（须关断），-2 读失败。
  * 读失败与磁体异常必须分开：单次总线抖动不该关断电机，总线真死了角度通道会先
  * 失败，由 sensor_max_age_ms 兜底。
+ * 与 TIM2 中断内的轮询读共用总线，调用方须保证期间不发起角度刷新。
  */
 int AS5600_CheckStatus(AS5600_T *sensor)
 {
@@ -259,12 +233,6 @@ int AS5600_CheckStatus(AS5600_T *sensor)
   if (sensor == NULL)
   {
     return -1;
-  }
-
-  /* 阻塞读与 DMA 读不能在同一总线上重入 */
-  if (sensor->busy)
-  {
-    return -2;
   }
 
   if (AS5600_ReadRegister(sensor, AS5600_STATUS_REGISTER, &status) != 0)

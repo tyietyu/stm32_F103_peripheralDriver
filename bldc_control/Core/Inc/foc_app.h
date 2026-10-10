@@ -28,25 +28,31 @@ extern "C" {
 #define FOC_SIGNAL_COUNT            6U
 
 /* ================= 生命周期与调度 ================= */
-/* main() 中调用：复位内部状态、挂接收、写 Sguan.status = 0x01 触发库启动 */
+/* main() 中调用：复位内部状态、写 Sguan.status = 0x01 触发库启动 */
 void FocApp_Init(void);
 /* while(1) 中调用，内部按 10 Hz 自限速：DRV8301 / AS5600 状态轮询，置故障标志 */
 void FocApp_DiagnoseLoop(void);
 /* 硬关断：先撤 TIM1 的 MOE 再拉低 EN_GATE。任何上下文可调，含 HardFault */
 void FocApp_Shutdown(void);
 
+/*
+ * 速度给定 [rad/s]，正负决定转向，落库前按 FOC_SPEED_LIMIT_RAD_S 限幅。
+ * 上位机协议已关闭，上电标定完成后电机直接按该值转动；可在代码或调试器里改。
+ */
+extern volatile float FocApp_SpeedCmd_RadS;
+
 /* ================= 供 UserData_*.h 一行转发的原语 ================= */
 void     FocApp_HwStart(void);                       /* <- User_InitialInit()   */
 int32_t  FocApp_GetCurrentRaw(uint8_t ch);           /* <- User_ReadADC_Raw()   */
 float    FocApp_GetEncoderRad(void);                 /* <- User_Encoder_ReadRad */
-void     FocApp_SetPwmDuty(uint16_t du, 
-                           uint16_t dv, 
+void     FocApp_SetPwmDuty(uint16_t du,
+                           uint16_t dv,
                            uint16_t dw);             /* <- User_PwmDuty_Set()   */
-void     FocApp_Send(uint8_t *buf, uint16_t len);    /* <- User_CorrespondSet() */
 uint8_t  FocApp_GetFaultFlag(uint8_t which);         /* <- MOTOR_STATUS_*_Signal*/
 void     FocApp_ApplyTargets(void);                  /* <- User_UserControl()   */
 
 /* ================= 目标值与控制字下发 ================= */
+/* 以下三个接口由 User_AO/BO/CO_Adjust() 转发；上位机协议关闭后无人触发，保留供重新接入 */
 /* 按当前 mode 分发目标值，内部按 safe 限幅后再落到库结构体 */
 void FocApp_SetTarget(float value);
 /* 登记模式切换请求，实际切换在 15 kHz 环内完成（含控制器历史量复位） */
