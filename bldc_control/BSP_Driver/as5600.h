@@ -45,8 +45,21 @@
 #define AS5600_MAX_STEP_REJECT      3U
 
 /* 单次阻塞读/写的总线超时。轮询读在 TIM2 中断内执行（100 kHz 下正常约 0.5 ms），
-   该值同时决定总线故障时中断的最长占用时间，取 2 ms 为正常读的 4 倍余量 */
+   该值同时决定总线故障时中断的最长占用时间，取 2 ms 为正常读的 4 倍余量。
+   不能放大：必须小于 foc_app.c 的 FOC_ENCODER_MAX_AGE_MS(5)，否则一次超时就会把
+   角度样本拖过新鲜度窗口，直接锁 ENCODER_ERR */
 #define AS5600_I2C_TIMEOUT_MS       2U
+
+/*
+ * I2C1 引脚，总线恢复时临时切成 GPIO 位敲，必须与 i2c.c 的 HAL_I2C_MspInit 一致。
+ * 位敲半周期 5 us（100 kHz），最多 9 个 SCL 脉冲（8 位数据 + ACK）+ STOP，总计约 100 us。
+ */
+#define AS5600_SCL_PORT             GPIOB
+#define AS5600_SCL_PIN              GPIO_PIN_6
+#define AS5600_SDA_PORT             GPIOB
+#define AS5600_SDA_PIN              GPIO_PIN_7
+#define AS5600_RECOVER_HALF_US      5U
+#define AS5600_RECOVER_MAX_CLOCKS   9U
 
 typedef struct
 {
@@ -70,7 +83,7 @@ int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c);
 /*
  * 轮询读取一次 RAW_ANGLE 并完成解算发布，由周期任务（TIM2 中断）调用。
  * 100 kHz 总线下单次读约 0.5 ms，不能按 4 kHz 每周期调用。
- * 返回 0 成功；-1 失败（总线卡死时内部复位 I2C 外设恢复）。
+ * 返回 0 成功；-1 失败（总线卡死时内部做 I2C 总线恢复：补 SCL 时钟 + STOP + 外设复位）。
  */
 int AS5600_Update(AS5600_T *sensor);
 /* 运行期 STATUS 观测（只打点不判定磁体）：0 读取正常，-2 读失败 */

@@ -29,10 +29,10 @@ DRV8301_Init(&hspi2);         /* 返回 DRV8301_OK 表示已使能并完成配�
 * `EN_GATE`(PC0) 上电默认低电平，此时器件休眠、栅极关断、**SPI 完全不响应**。
   `DRV8301_Init()` 会先拉高 EN_GATE 并等待 10 ms（tSPI_READY 最大值）再访问寄存器。
 * `DRV8301_Shutdown()` 拉低 EN_GATE 立即硬关断栅极。**本板 `nFAULT`/`nOCTW` 未接 MCU**
-  （原理图上经 SN74AHC1G08 与门只驱动 LED1 与 Q1），故障无法中断上报，上层必须：
-  1. 由低频任务轮询 `DRV8301_ReadStatus()` 检查 STATUS1 的 FAULT 位；
-  2. 急停路径直接调用 `DRV8301_Shutdown()`。
-     即时过流保护依赖芯片内部 OC latch shutdown（CTRL1 已配置为 `OC_MODE_LATCH_SD`）。
+  （原理图上经 SN74AHC1G08 与门只驱动 LED1 与 Q1），故障由 LED 硬件指示，
+  **软件不做 FAULT 轮询**（`FocApp_DiagnoseLoop` 已移除 `DRV8301_ReadStatus()` 检查）。
+  急停路径直接调用 `DRV8301_Shutdown()`；即时过流保护依赖芯片内部 OC latch shutdown
+  （CTRL1 已配置为 `OC_MODE_LATCH_SD`）。
 * Device ID 手册未给出期望值，驱动不做校验，需要时由上层从 `status2` 的 bit3:0 自行读取。
 
 ### 电流采样标定
@@ -55,8 +55,10 @@ DRV8301_Init(&hspi2);         /* 返回 DRV8301_OK 表示已使能并完成配�
   （1 kHz）调用一次 `AS5600_Update()`，读取、解算与发布在同一函数内完成；
   100 kHz 下单次读约 0.5 ms，不能按 4 kHz 每周期都读，否则中断占满 CPU。
 * 轮询读在中断内依赖 HAL 超时，`TICK_INT_PRIORITY` 已设为 0 让 SysTick 能抢占 TIM2；
-  总线卡死（从机拉死 SDA/SCL，BUSY 不清）时 `AS5600_Update()` 直接 DeInit/Init
-  复位 I2C1 恢复，避免角度通道永久失效。
+  总线卡死（从机拉死 SDA，BUSY 不清）时由 `AS5600_BusRecover()` 按 I2C 规范 3.1.16 恢复：
+  两脚切 GPIO 位敲最多 9 个 SCL 脉冲喂完从机残留位、补 STOP、再 DeInit/Init 复位 I2C1。
+  仅复位外设对从机拉死无效（AS5600 在等时钟而不是等复位）。`AS5600_Init()` 也会在第一笔
+  事务前查 SDA 电平，为低先恢复——MCU 复位不会清掉 AS5600 的卡死状态，必须靠这一步。
 * 单次步进超过 1/8 圈（512 counts）按误码丢弃，
   连续 `AS5600_MAX_STEP_REJECT`(3) 次后以当前读数重新同步，避免永久失效。
 * `AS5600_CheckStatus()` 由低频任务定期调用，**磁体检测判定已取消**：只读 STATUS 并在

@@ -16,7 +16,7 @@
  * @reminder: 1->开启基于MTPA的弱磁控制
  * @return {*}
  */
-#define Open_FW_Calculate 1
+#define Open_FW_Calculate 0
 
 /**
  * @description: 宏定义决定UART或者CAN发送数据的模式
@@ -36,7 +36,7 @@
  * @reminder: 库原值 0.3 对本电机是 0.975 A（1.2 倍堵转电流），换电机务必按上式复核
  * @return {*}
  */
-#define Align_Voltage_Ratio 0.3f
+#define Align_Voltage_Ratio 0.15f
 
 
 #endif // USERDATA_CALCULATE_H

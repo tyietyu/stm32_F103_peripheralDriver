@@ -42,8 +42,10 @@
 /*
  * 连续多少个 1 kHz 周期判定角度陈旧才置故障。单次 I2C 抖动会让 AS5600 的 valid
  * 短暂为假（下一次轮询读 1 ms 后即恢复），不做去抖会误关断电机。
+ * 必须大于 as5600.h 的 AS5600_MAX_STEP_REJECT(3)：步进拒绝连续 3 次后第 4 次才重同步
+ * 基准，这里若也取 3 会在重同步前一拍就锁死，自愈机制永远跑不到。
  */
-#define FOC_ENCODER_STALE_LIMIT     3U
+#define FOC_ENCODER_STALE_LIMIT     5U
 /*
  * 给定值上限。全部低于 safe.Dcur_MAX/Qcur_MAX 的故障阈值，命令本身不该把状态机
  * 顶进 OVERCURRENT。HT3510：额定 0.53 A / 0.11 N.m，堵转 0.80 A，最大 965 rpm。
@@ -93,9 +95,6 @@ static uint32_t s_diag_tick;
  */
 static volatile uint32_t s_high_loop_count;     /* 15 kHz 高频环存活计数，ADC 中断内自增 */
 static uint32_t s_log_high_loop_last;
-static uint16_t s_log_drv_status1 = 0xFFFFU;
-static uint16_t s_log_drv_status2 = 0xFFFFU;
-static uint8_t  s_log_drv_ok = 1U;
 static uint8_t  s_log_enc_state = 0xFFU;        /* 0 正常 / 1 读失败 */
 static uint8_t  s_log_status_group = 0xFFU;
 static uint8_t  s_log_status_last = 0xFFU;
@@ -273,8 +272,6 @@ void FocApp_Shutdown(void)
 void FocApp_DiagnoseLoop(void)
 {
     uint32_t now = HAL_GetTick();
-    uint16_t status1 = 0U;
-    uint16_t status2 = 0U;
     int encoder_result;
     uint8_t enc_state;
 
@@ -286,35 +283,6 @@ void FocApp_DiagnoseLoop(void)
         return;
     }
     s_diag_tick = now;
-
-    /* 本板 nFAULT/nOCTW 未接 MCU，DRV8301 的故障只能靠 SPI 轮询发现 */
-    if (DRV8301_ReadStatus(&status1, &status2) == DRV8301_OK)
-    {
-        s_log_drv_ok = 1U;
-        if ((status1 != s_log_drv_status1) || (status2 != s_log_drv_status2))
-        {
-            s_log_drv_status1 = status1;
-            s_log_drv_status2 = status2;
-            /* OC 位：bit5..0 = HA/LA/HB/LB/HC/LC，OC 锁存关断后这里会非零且 FAULT=1 */
-            CAW_LOG_INFO("DRV8301 STATUS1=0x%04X STATUS2=0x%04X FAULT=%u OC=0x%02X GVDD_UV=%u PVDD_UV=%u OTSD=%u",
-                         (unsigned)status1, (unsigned)status2,
-                         (unsigned)((status1 & DRV8301_SR1_FAULT) != 0U),
-                         (unsigned)(status1 & 0x3FU),
-                         (unsigned)((status1 & DRV8301_SR1_GVDD_UV) != 0U),
-                         (unsigned)((status1 & DRV8301_SR1_PVDD_UV) != 0U),
-                         (unsigned)((status1 & DRV8301_SR1_OTSD) != 0U));
-        }
-        if ((status1 & DRV8301_SR1_FAULT) != 0U)
-        {
-            s_signal[FOC_SIGNAL_SENSOR_ERROR] = 1U;
-        }
-    }
-    else if (s_log_drv_ok != 0U)
-    {
-        /* EN_GATE 为低时器件休眠、SPI 不响应，关断后这里失败是预期现象 */
-        s_log_drv_ok = 0U;
-        CAW_LOG_WARN("DRV8301 status read FAILED (expected if EN_GATE is low)");
-    }
 
     /* 这里是阻塞 I2C，与 TIM2 发起的轮询读不能在同一总线上重入。
        磁体检测判定已取消，CheckStatus 只返回 0 读取正常 / -2 读失败，不再触发 ENCODER_ERROR */
@@ -622,16 +590,19 @@ static void FocApp_LogStatusChange(void)
  *   Ud/Uq   出现 nan 说明控制器被 NaN 污染（如 FW_MTPA 对 Ld==Lq 除零）
  *   duty    三路都是 0 等于三相下管全开（刹车短路），电机被锁死且无电流
  *   raw     零矢量下约 2048，不随电流变化说明 ADC 采样链没通
+ *   ec/sr   AS5600 连续读失败次数 / 连续步进拒绝次数，成功一次即清零。ENCODER_ERR 时
+ *           ec 大 sr 为 0 是 I2C 读失败（EMI/总线），sr 非 0 是角度跳变被拒（磁体弱）
  */
 static void FocApp_LogTelemetry(void)
 {
     uint32_t high_loop_delta = s_high_loop_count - s_log_high_loop_last;
     s_log_high_loop_last = s_high_loop_count;
 
-    CAW_LOG_INFO("TLM st=%u(%s) mode=%u ts=%.1f rs=%.1f rad=%.3f eoff=%.3f",
+    CAW_LOG_INFO("TLM st=%u(%s) mode=%u ts=%.1f rs=%.1f rad=%.3f eoff=%.3f ec=%u sr=%u",
                  (unsigned)Sguan.status, FocApp_StatusName(Sguan.status), (unsigned)Sguan.mode,
                  (double)Sguan.foc.Target_Speed, (double)Sguan.encoder.Real_Speed,
-                 (double)Sguan.encoder.Real_Rad, (double)Sguan.encoder.Pos_offset);
+                 (double)Sguan.encoder.Real_Rad, (double)Sguan.encoder.Pos_offset,
+                 (unsigned)g_encoder.error_count, (unsigned)g_encoder.step_reject_count);
     CAW_LOG_INFO("TLM Ia=%.3f Ib=%.3f Id=%.3f Iq=%.3f Tid=%.3f vout=%.3f",
                  (double)Sguan.current.Real_Ia, (double)Sguan.current.Real_Ib,
                  (double)Sguan.current.Real_Id, (double)Sguan.current.Real_Iq,
@@ -681,13 +652,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
          * 而 Offset_EncoderRead() 需要此时的新鲜角度。
          * 轮询读在 100 kHz 下约 0.5 ms，4 kHz 每周期都读会让本中断占满 CPU、
          * 饿死主循环，故降为 1 kHz，与低速环同拍，读完即做新鲜度判定。
+         * 新鲜度判定必须和刷新放在同一个条件里：主循环主动置 s_i2c_blocking 挡住刷新
+         * 的窗口内，样本必然变旧，这段时间不能反过来判成编码器故障。
          */
         if (s_i2c_blocking == 0U)
         {
             (void)AS5600_Update(&g_encoder);
+            FocApp_CheckEncoderFresh();
         }
 
-        FocApp_CheckEncoderFresh();
         SguanFOC_Low_Loop();
     }
 }

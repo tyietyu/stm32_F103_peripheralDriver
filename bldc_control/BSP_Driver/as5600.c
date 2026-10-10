@@ -106,13 +106,57 @@ static void AS5600_PublishSample(AS5600_T *sensor, uint16_t raw_angle, uint32_t 
 }
 
 /*
- * 总线恢复。从机拉死 SDA/SCL 时 BUSY 标志不会自行清除，HAL 内部会空转 25 ms
- * 等待超时且后续每次读都立即失败，必须复位外设（SWRST 清 BUSY）才能恢复。
+ * I2C 总线恢复（I2C 规范 3.1.16）。从机卡在字节中间拉死 SDA 时（传输被复位/EMI 打断），
+ * 它在等主机的下一个 SCL 时钟，复位 MCU 外设（SWRST）对它无效，必须由主机手动补时钟
+ * 把剩余位"喂"完，再给 STOP 让从机状态机回到空闲。
+ * 流程：外设 DeInit 释放引脚 -> 两脚切开漏 GPIO 并释放 -> SDA 为低则最多敲 9 个 SCL 脉冲，
+ * 每拍查 SDA -> 补 STOP -> 外设 Init（MspInit 重配 AF + SWRST 清 BUSY）。
+ * 返回 0 SDA 已释放，-1 仍被拉死（SDA 对地短路或器件损坏）。约 100 us，可在 TIM2 中断内调用。
  */
-static void AS5600_RecoverBus(AS5600_T *sensor)
+static int AS5600_BusRecover(AS5600_T *sensor)
 {
-  (void)HAL_I2C_DeInit(sensor->hi2c);
+  GPIO_InitTypeDef gpio = {0};
+  uint8_t i;
+  int released;
+
+  (void)HAL_I2C_DeInit(sensor->hi2c); /* MspDeInit 内已 HAL_GPIO_DeInit 两脚 */
+
+  /* 先写 1 再切输出，避免切换瞬间输出 0 的毛刺；开漏 + 外部上拉，读 IDR 即总线真实电平 */
+  HAL_GPIO_WritePin(AS5600_SCL_PORT, AS5600_SCL_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(AS5600_SDA_PORT, AS5600_SDA_PIN, GPIO_PIN_SET);
+  gpio.Mode = GPIO_MODE_OUTPUT_OD;
+  gpio.Pull = GPIO_NOPULL;
+  gpio.Speed = GPIO_SPEED_FREQ_LOW;
+  gpio.Pin = AS5600_SCL_PIN;
+  HAL_GPIO_Init(AS5600_SCL_PORT, &gpio);
+  gpio.Pin = AS5600_SDA_PIN;
+  HAL_GPIO_Init(AS5600_SDA_PORT, &gpio);
+  delay_us(AS5600_RECOVER_HALF_US);
+
+  /* 从机卡在输出 0 位时会拉住 SDA，每个 SCL 脉冲喂走一位，SDA 一释放即停 */
+  for (i = 0U; (i < AS5600_RECOVER_MAX_CLOCKS) &&
+               (HAL_GPIO_ReadPin(AS5600_SDA_PORT, AS5600_SDA_PIN) == GPIO_PIN_RESET); i++)
+  {
+    HAL_GPIO_WritePin(AS5600_SCL_PORT, AS5600_SCL_PIN, GPIO_PIN_RESET);
+    delay_us(AS5600_RECOVER_HALF_US);
+    HAL_GPIO_WritePin(AS5600_SCL_PORT, AS5600_SCL_PIN, GPIO_PIN_SET);
+    delay_us(AS5600_RECOVER_HALF_US);
+  }
+  released = (HAL_GPIO_ReadPin(AS5600_SDA_PORT, AS5600_SDA_PIN) != GPIO_PIN_RESET) ? 0 : -1;
+
+  /* 补 STOP：SCL 低时拉低 SDA，SCL 拉高后再释放 SDA（SCL 高期间 SDA 上升沿 = STOP） */
+  HAL_GPIO_WritePin(AS5600_SCL_PORT, AS5600_SCL_PIN, GPIO_PIN_RESET);
+  delay_us(AS5600_RECOVER_HALF_US);
+  HAL_GPIO_WritePin(AS5600_SDA_PORT, AS5600_SDA_PIN, GPIO_PIN_RESET);
+  delay_us(AS5600_RECOVER_HALF_US);
+  HAL_GPIO_WritePin(AS5600_SCL_PORT, AS5600_SCL_PIN, GPIO_PIN_SET);
+  delay_us(AS5600_RECOVER_HALF_US);
+  HAL_GPIO_WritePin(AS5600_SDA_PORT, AS5600_SDA_PIN, GPIO_PIN_SET);
+  delay_us(AS5600_RECOVER_HALF_US);
+
+  /* HAL_I2C_Init 内部调 MspInit 把两脚还给 I2C1 的 AF，并 SWRST 复位外设 */
   (void)HAL_I2C_Init(sensor->hi2c);
+  return released;
 }
 
 int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c)
@@ -134,6 +178,18 @@ int AS5600_Init(AS5600_T *sensor, I2C_HandleTypeDef *hi2c)
   sensor->error_count = 0U;
   sensor->step_reject_count = 0U;
   sensor->valid = false;
+
+  /*
+   * 上一轮传输被复位/EMI 打断时从机会一直拉死 SDA，且 MCU 复位不会清掉它（AS5600 没断电）。
+   * 第一笔事务之前先查 SDA 电平，为低就做总线恢复，否则 HAL 每次读都要空转 25 ms 等 BUSY。
+   */
+  if (HAL_GPIO_ReadPin(AS5600_SDA_PORT, AS5600_SDA_PIN) == GPIO_PIN_RESET)
+  {
+    int recovered = AS5600_BusRecover(sensor);
+    CAW_LOG_WARN("AS5600 SDA stuck low at init, bus recover %s (SDA now=%u)",
+                 (recovered == 0) ? "OK" : "FAILED",
+                 (unsigned)HAL_GPIO_ReadPin(AS5600_SDA_PORT, AS5600_SDA_PIN));
+  }
 
   /* 绑定官方驱动句柄与 I2C 回调，再交给驱动做初始化（校验回调并置 inited 标志） */
   s_hi2c = hi2c;
@@ -220,11 +276,12 @@ int AS5600_Update(AS5600_T *sensor)
 
   /*
    * 总线空闲时 BUSY 必须为 0；为 1 说明从机把 SDA/SCL 拉死在中途。此时不能交给
-   * HAL（其内部会空转 25 ms 等 BUSY 清除），直接复位外设恢复，否则角度通道永久失效。
+   * HAL（其内部会空转 25 ms 等 BUSY 清除），直接做总线恢复（补时钟 + STOP + 外设复位），
+   * 否则角度通道永久失效。恢复结果由下一拍的读是否成功体现，本拍按失败计。
    */
   if (__HAL_I2C_GET_FLAG(sensor->hi2c, I2C_FLAG_BUSY) != RESET)
   {
-    AS5600_RecoverBus(sensor);
+    (void)AS5600_BusRecover(sensor);
     AS5600_RecordReadError(sensor);
     return -1;
   }
